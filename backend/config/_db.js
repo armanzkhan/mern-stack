@@ -1,7 +1,7 @@
 // backend/config/_db.js
 const mongoose = require("mongoose");
 
-const defaultUri = process.env.CONNECTION_STRING || "mongodb://localhost:27017/Ressichem";
+const defaultUri = process.env.CONNECTION_STRING || "mongodb+srv://armanzaman4_db_user:1JJORz7jP2VFgTaP@cluster0.qn1babq.mongodb.net/Ressichem?retryWrites=true&w=majority";
 const defaultOptions = {
   useNewUrlParser: true,
   useUnifiedTopology: true,

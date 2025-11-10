@@ -41,8 +41,13 @@ try {
 app.use("/uploads", express.static(uploadsRoot));
 
 // ===== MongoDB Connection =====
-const mongoUri =
-  process.env.CONNECTION_STRING || "mongodb://localhost:27017/Ressichem";
+const defaultUri = "mongodb+srv://armanzaman4_db_user:1JJORz7jP2VFgTaP@cluster0.qn1babq.mongodb.net/Ressichem?retryWrites=true&w=majority";
+const envUri = process.env.CONNECTION_STRING ? process.env.CONNECTION_STRING.trim() : "";
+const mongoUri = envUri && envUri.length > 0 ? envUri : defaultUri;
+
+// Debug: Log connection string (without password for security)
+console.log("🔍 MongoDB URI:", mongoUri.replace(/:[^:@]+@/, ":****@"));
+console.log("🔍 Using environment variable:", !!process.env.CONNECTION_STRING);
 
 mongoose
   .connect(mongoUri, {
@@ -52,7 +57,9 @@ mongoose
   })
   .then(() => console.log("✅ MongoDB connected to 'Ressichem' database"))
   .catch((err) => {
-    console.error("❌ MongoDB connection error:", err);
+    console.error("❌ MongoDB connection error:", err.message);
+    console.error("❌ Connection string length:", mongoUri.length);
+    console.error("❌ Connection string starts with:", mongoUri.substring(0, 20));
   });
 
 // ===== Verify & Auto-Create Collections =====
