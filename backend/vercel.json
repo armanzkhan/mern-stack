@@ -1,0 +1,113 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "api/**/*.js",
+      "use": "@vercel/node"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/health",
+      "dest": "/api/health.js"
+    },
+    {
+      "src": "/api/auth/login",
+      "dest": "/api/auth/login.js",
+      "methods": ["POST", "OPTIONS"]
+    },
+    {
+      "src": "/api/auth/register",
+      "dest": "/api/auth/register.js",
+      "methods": ["POST", "OPTIONS"]
+    },
+    {
+      "src": "/api/auth/refresh",
+      "dest": "/api/auth/refresh.js",
+      "methods": ["POST", "OPTIONS"]
+    },
+    {
+      "src": "/api/auth/me",
+      "dest": "/api/auth/me.js",
+      "methods": ["GET", "OPTIONS"]
+    },
+    {
+      "src": "/api/auth/current-user",
+      "dest": "/api/auth/current-user.js",
+      "methods": ["GET", "OPTIONS"]
+    },
+    {
+      "src": "/api/auth/(.*)",
+      "dest": "/api/auth/index.js"
+    },
+    {
+      "src": "/api/users/(.*)",
+      "dest": "/api/users/index.js"
+    },
+    {
+      "src": "/api/companies/(.*)",
+      "dest": "/api/companies/index.js"
+    },
+    {
+      "src": "/api/customers/(.*)",
+      "dest": "/api/customers/index.js"
+    },
+    {
+      "src": "/api/orders/(.*)",
+      "dest": "/api/orders/index.js"
+    },
+    {
+      "src": "/api/products/(.*)",
+      "dest": "/api/products/index.js"
+    },
+    {
+      "src": "/api/roles/(.*)",
+      "dest": "/api/roles/index.js"
+    },
+    {
+      "src": "/api/permissions/(.*)",
+      "dest": "/api/permissions/index.js"
+    },
+    {
+      "src": "/api/permission-groups/(.*)",
+      "dest": "/api/permission-groups/index.js"
+    },
+    {
+      "src": "/api/notifications/(.*)",
+      "dest": "/api/notifications/index.js"
+    },
+    {
+      "src": "/api/managers/(.*)",
+      "dest": "/api/managers/index.js"
+    },
+    {
+      "src": "/api/product-categories/(.*)",
+      "dest": "/api/product-categories/index.js"
+    },
+    {
+      "src": "/api/invoices/(.*)",
+      "dest": "/api/invoices/index.js"
+    },
+    {
+      "src": "/api/customer-ledger/(.*)",
+      "dest": "/api/customer-ledger/index.js"
+    },
+    {
+      "src": "/api/product-images/(.*)",
+      "dest": "/api/product-images/index.js"
+    },
+    {
+      "src": "/api/(.*)",
+      "dest": "/api/$1.js"
+    }
+  ],
+  "env": {
+    "NODE_ENV": "production"
+  },
+  "functions": {
+    "api/**/*.js": {
+      "maxDuration": 10
+    }
+  }
+}
+
