@@ -1,5 +1,5 @@
 // controllers/authController.js
-const bcrypt = require("bcrypt");
+const bcrypt = require("bcryptjs");
 const User = require("../models/User");
 const { generateToken, verifyRefreshToken } = require("../services/authService");
 const notificationService = require("../services/notificationService");

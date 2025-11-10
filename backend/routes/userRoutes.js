@@ -121,7 +121,7 @@ router.get("/all", async (req, res) => {
 router.post("/test", async (req, res) => {
   try {
     const { firstName, lastName, email, password, phone, role, company_id } = req.body;
-    const bcrypt = require("bcrypt");
+    const bcrypt = require("bcryptjs");
     const hashedPassword = await bcrypt.hash(password || "test123", 10);
     
     // Check if user already exists
@@ -174,7 +174,7 @@ router.post(
   async (req, res) => {
     try {
       const { company_id, user_id, email, password, department, roleIds } = req.body;
-      const bcrypt = require("bcrypt");
+      const bcrypt = require("bcryptjs");
       const hashedPassword = await bcrypt.hash(password, 10);
       // Check if user already exists
       const existingUser = await User.findOne({ email });
@@ -293,7 +293,7 @@ router.put(
         return res.status(404).json({ message: "User not found" });
       }
 
-      const bcrypt = require("bcrypt");
+      const bcrypt = require("bcryptjs");
       const hashedPassword = await bcrypt.hash(newPassword, 10);
       user.password = hashedPassword;
       await user.save();

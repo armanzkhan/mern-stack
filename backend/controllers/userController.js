@@ -46,7 +46,7 @@ exports.createUser = async (req, res) => {
 
     // Hash password if provided
     if (userData.password) {
-      const bcrypt = require('bcrypt');
+      const bcrypt = require('bcryptjs');
       userData.password = await bcrypt.hash(userData.password, 10);
     }
 
