@@ -19,8 +19,7 @@ function initializeApp() {
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
 
-  // Health check
-  app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
+  // Health check (handled directly in serverless function, but keep for compatibility)
   app.get('/api/health/test', (req, res) =>
     res.json({ status: 'ok', route: '/api/health/test', time: new Date().toISOString() })
   );
@@ -87,65 +86,90 @@ module.exports = async (req, res) => {
   try {
     console.log('🔍 Serverless function invoked:', req.method, req.url);
     
+    // Handle health check without database connection (fast path)
+    const urlPath = req.url.split('?')[0]; // Remove query string
+    if (urlPath === '/api/health' || urlPath === '/api/health/') {
+      res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+      return;
+    }
+    
     // Initialize Express app
     const expressApp = initializeApp();
     
-    // Connect to database
+    // Connect to database (with shorter timeout for faster failure)
     console.log('🔍 Connecting to database...');
-    await connectToDatabase();
-    console.log('✅ Database connected');
+    let dbConnected = false;
+    try {
+      await Promise.race([
+        connectToDatabase(),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Database connection timeout')), 3000)
+        )
+      ]);
+      dbConnected = true;
+      console.log('✅ Database connected');
+    } catch (dbError) {
+      console.error('❌ Database connection error:', dbError.message);
+      // For health checks, continue without database
+      if (urlPath.startsWith('/api/health')) {
+        res.status(200).json({ 
+          status: 'ok', 
+          database: 'disconnected',
+          timestamp: new Date().toISOString() 
+        });
+        return;
+      }
+      // For other routes, return error
+      if (!res.headersSent) {
+        res.status(503).json({ 
+          error: 'Database connection failed',
+          message: dbError.message 
+        });
+        return;
+      }
+    }
 
     // Handle the request with Express app
     // Wrap in promise to ensure proper async handling
-    return new Promise((resolve, reject) => {
-      // Track if response has been sent
-      let responseSent = false;
-
-      // Set a timeout to prevent hanging (9 seconds, less than maxDuration)
+    return new Promise((resolve) => {
+      let finished = false;
+      
+      // Set timeout (7 seconds to leave buffer)
       const timeout = setTimeout(() => {
-        if (!responseSent) {
-          responseSent = true;
-          console.error('❌ Request timeout');
-          if (!res.headersSent) {
-            res.status(504).json({ error: 'Request timeout' });
-          }
-          resolve(); // Resolve instead of reject to prevent unhandled rejection
+        if (!finished && !res.headersSent) {
+          finished = true;
+          console.error('❌ Request timeout after 7s');
+          res.status(504).json({ error: 'Request timeout' });
+          resolve();
         }
-      }, 9000);
+      }, 7000);
 
-      // Override res.end to detect when response is complete
+      // Track when response is sent
+      const finish = () => {
+        if (!finished) {
+          finished = true;
+          clearTimeout(timeout);
+          resolve();
+        }
+      };
+
+      // Override res methods to detect completion
       const originalEnd = res.end.bind(res);
       res.end = function(...args) {
-        if (!responseSent) {
-          responseSent = true;
-          clearTimeout(timeout);
-          originalEnd(...args);
-          resolve();
-        }
+        finish();
+        return originalEnd.apply(this, args);
       };
 
-      // Override res.json
       const originalJson = res.json.bind(res);
       res.json = function(data) {
-        if (!responseSent) {
-          responseSent = true;
-          clearTimeout(timeout);
-          originalJson(data);
-          resolve();
-        }
-        return res;
+        finish();
+        return originalJson.call(this, data);
       };
 
-      // Override res.send
       const originalSend = res.send.bind(res);
       res.send = function(data) {
-        if (!responseSent) {
-          responseSent = true;
-          clearTimeout(timeout);
-          originalSend(data);
-          resolve();
-        }
-        return res;
+        finish();
+        return originalSend.call(this, data);
       };
 
       // Handle the request with Express
@@ -153,25 +177,27 @@ module.exports = async (req, res) => {
         expressApp(req, res, (err) => {
           if (err) {
             console.error('❌ Express handler error:', err);
-            if (!responseSent) {
-              responseSent = true;
-              clearTimeout(timeout);
-              if (!res.headersSent) {
-                res.status(500).json({ error: err.message || 'Internal server error' });
-              }
-              resolve(); // Resolve instead of reject to prevent unhandled rejection
+            if (!finished && !res.headersSent) {
+              finish();
+              res.status(500).json({ error: err.message || 'Internal server error' });
             }
+          }
+          // If no error and response not sent, Express should handle it
+          // But ensure we resolve after a short delay if nothing happened
+          if (!finished) {
+            setTimeout(() => {
+              if (!finished && !res.headersSent) {
+                finish();
+                res.status(500).json({ error: 'No response from Express' });
+              }
+            }, 100);
           }
         });
       } catch (err) {
         console.error('❌ Error calling Express app:', err);
-        if (!responseSent) {
-          responseSent = true;
-          clearTimeout(timeout);
-          if (!res.headersSent) {
-            res.status(500).json({ error: err.message || 'Internal server error' });
-          }
-          resolve(); // Resolve instead of reject to prevent unhandled rejection
+        if (!finished && !res.headersSent) {
+          finish();
+          res.status(500).json({ error: err.message || 'Internal server error' });
         }
       }
     });
@@ -184,7 +210,6 @@ module.exports = async (req, res) => {
         stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
       });
     }
-    throw error;
   }
 };
 
