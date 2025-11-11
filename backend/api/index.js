@@ -90,7 +90,8 @@ module.exports = async (req, res) => {
     const urlPath = req.url.split('?')[0]; // Remove query string
     if (urlPath === '/api/health' || urlPath === '/api/health/') {
       res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
-      return;
+      res.end();
+      return Promise.resolve();
     }
     
     // Initialize Express app
