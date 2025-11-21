@@ -75,6 +75,25 @@ exports.createUser = async (req, res) => {
       }
     }
 
+    // If this is a manager, initialize managerProfile
+    if (userData.isManager || userData.userType === 'manager') {
+      if (!userData.managerProfile) {
+        userData.managerProfile = {
+          assignedCategories: [],
+          managerLevel: 'junior',
+          canAssignCategories: false,
+          notificationPreferences: {
+            orderUpdates: true,
+            stockAlerts: true,
+            statusChanges: true,
+            newOrders: true,
+            lowStock: true,
+            categoryReports: true
+          }
+        };
+      }
+    }
+
     const user = new User(userData);
     await user.save();
     

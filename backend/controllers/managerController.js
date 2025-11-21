@@ -630,6 +630,11 @@ exports.getAllManagers = async (req, res) => {
       company_id: companyId, 
       isManager: true
     }).select('user_id email firstName lastName managerProfile createdAt');
+    
+    console.log(`🔍 Found ${userManagers.length} users with isManager: true`);
+    userManagers.forEach(user => {
+      console.log(`  - ${user.email} (${user.user_id}): has managerProfile: ${!!user.managerProfile}`);
+    });
 
     // Combine both sources
     const allManagers = [];
