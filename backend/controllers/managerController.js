@@ -625,10 +625,10 @@ exports.getAllManagers = async (req, res) => {
       .sort({ createdAt: -1 });
 
     // Get managers from User collection (embedded managerProfile)
+    // Include all users with isManager: true, even if they don't have assignedCategories yet
     const userManagers = await User.find({ 
       company_id: companyId, 
-      isManager: true,
-      'managerProfile.assignedCategories': { $exists: true, $ne: [] }
+      isManager: true
     }).select('user_id email firstName lastName managerProfile createdAt');
 
     // Combine both sources
@@ -661,19 +661,22 @@ exports.getAllManagers = async (req, res) => {
       });
     }
 
-    // Add User manager profiles
+    // Add User manager profiles (include all managers, even without assignedCategories)
     userManagers.forEach(user => {
-      if (user.managerProfile && user.managerProfile.assignedCategories) {
+      // Check if this user is already in allManagers (from Manager collection)
+      const alreadyAdded = allManagers.some(m => m.user_id === user.user_id);
+      
+      if (!alreadyAdded) {
         allManagers.push({
-          _id: user.managerProfile.manager_id || user._id,
+          _id: user.managerProfile?.manager_id || user._id,
           user_id: user.user_id,
           firstName: user.firstName || '',
           lastName: user.lastName || '',
           email: user.email || '',
           fullName: `${user.firstName || ''} ${user.lastName || ''}`.trim(),
-          assignedCategories: user.managerProfile.assignedCategories,
-          managerLevel: user.managerProfile.managerLevel || 'junior',
-          performance: user.managerProfile.performance || {
+          assignedCategories: user.managerProfile?.assignedCategories || [],
+          managerLevel: user.managerProfile?.managerLevel || 'junior',
+          performance: user.managerProfile?.performance || {
             totalOrdersManaged: 0,
             totalProductsManaged: 0,
             averageResponseTime: 0,
