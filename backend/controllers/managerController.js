@@ -672,14 +672,16 @@ exports.getAllManagers = async (req, res) => {
       const alreadyAdded = allManagers.some(m => m.user_id === user.user_id);
       
       if (!alreadyAdded) {
-        allManagers.push({
-          _id: user.managerProfile?.manager_id || user._id,
+        const managerData = {
+          _id: user.managerProfile?.manager_id || user._id.toString(),
           user_id: user.user_id,
           firstName: user.firstName || '',
           lastName: user.lastName || '',
           email: user.email || '',
           fullName: `${user.firstName || ''} ${user.lastName || ''}`.trim(),
-          assignedCategories: user.managerProfile?.assignedCategories || [],
+          assignedCategories: (user.managerProfile && Array.isArray(user.managerProfile.assignedCategories)) 
+            ? user.managerProfile.assignedCategories 
+            : [],
           managerLevel: user.managerProfile?.managerLevel || 'junior',
           performance: user.managerProfile?.performance || {
             totalOrdersManaged: 0,
@@ -688,9 +690,19 @@ exports.getAllManagers = async (req, res) => {
             lastActiveAt: new Date()
           },
           isActive: true,
-          createdAt: user.createdAt,
+          createdAt: user.createdAt || new Date(),
           source: 'User'
+        };
+        
+        console.log(`  ✅ Adding manager from User collection: ${user.email} (${user.user_id})`, {
+          hasManagerProfile: !!user.managerProfile,
+          managerProfileType: typeof user.managerProfile,
+          managerData: managerData
         });
+        
+        allManagers.push(managerData);
+      } else {
+        console.log(`  ⏭️ Skipping ${user.email} - already in Manager collection`);
       }
     });
 
