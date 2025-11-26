@@ -32,6 +32,8 @@ exports.getAllCustomers = async (req, res) => {
     const customers = await Customer.find(query)
       .populate('assignedManager.manager_id', 'user_id assignedCategories managerLevel')
       .populate('assignedManager.assignedBy', 'firstName lastName email')
+      .populate('assignedManagers.manager_id', 'user_id assignedCategories managerLevel')
+      .populate('assignedManagers.assignedBy', 'firstName lastName email')
       .sort({ createdAt: -1 })
       .limit(limit * 1)
       .skip((page - 1) * limit);
@@ -58,7 +60,9 @@ exports.getCustomer = async (req, res) => {
     
     const customer = await Customer.findOne({ _id: id, company_id: companyId })
       .populate('assignedManager.manager_id', 'user_id assignedCategories managerLevel')
-      .populate('assignedManager.assignedBy', 'firstName lastName email');
+      .populate('assignedManager.assignedBy', 'firstName lastName email')
+      .populate('assignedManagers.manager_id', 'user_id assignedCategories managerLevel')
+      .populate('assignedManagers.assignedBy', 'firstName lastName email');
     
     if (!customer) {
       return res.status(404).json({ message: "Customer not found" });
@@ -347,9 +351,11 @@ exports.getCustomerProfile = async (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
-    const customer = await Customer.findOne({ email: currentUser.email })
+    const customer = await Customer.findOne({ email: currentUser.email, company_id: companyId })
       .populate('assignedManager.manager_id', 'user_id assignedCategories managerLevel')
-      .populate('assignedManager.assignedBy', 'firstName lastName email');
+      .populate('assignedManager.assignedBy', 'firstName lastName email')
+      .populate('assignedManagers.manager_id', 'user_id assignedCategories managerLevel')
+      .populate('assignedManagers.assignedBy', 'firstName lastName email');
 
     if (!customer) {
       return res.status(404).json({ message: "Customer not found" });
@@ -753,12 +759,14 @@ exports.getCustomerDashboard = async (req, res) => {
       email: currentUser.email,
       company_id: companyId 
     })
-      .populate('assignedManager.manager_id', 'user_id assignedCategories managerLevel');
+      .populate('assignedManager.manager_id', 'user_id assignedCategories managerLevel')
+      .populate('assignedManagers.manager_id', 'user_id assignedCategories managerLevel');
     
     if (!customer) {
       // Try without company_id filter as fallback
       const customerFallback = await Customer.findOne({ email: currentUser.email })
-        .populate('assignedManager.manager_id', 'user_id assignedCategories managerLevel');
+        .populate('assignedManager.manager_id', 'user_id assignedCategories managerLevel')
+        .populate('assignedManagers.manager_id', 'user_id assignedCategories managerLevel');
       if (!customerFallback) {
         return res.status(404).json({ message: "Customer not found" });
       }
@@ -811,17 +819,35 @@ exports.getCustomerDashboard = async (req, res) => {
       availableProducts: availableProductsCount
     };
 
+    // Extract categories from all assigned managers
+    const allAssignedCategories = new Set();
+    if (customer.assignedManager?.manager_id?.assignedCategories) {
+      customer.assignedManager.manager_id.assignedCategories.forEach((cat) => {
+        allAssignedCategories.add(cat.category || cat);
+      });
+    }
+    if (customer.assignedManagers && customer.assignedManagers.length > 0) {
+      customer.assignedManagers.forEach((am) => {
+        if (am.manager_id?.assignedCategories) {
+          am.manager_id.assignedCategories.forEach((cat) => {
+            allAssignedCategories.add(cat.category || cat);
+          });
+        }
+      });
+    }
+
     res.json({
       customer: {
         _id: customer._id,
         companyName: customer.companyName,
         contactName: customer.contactName,
         assignedManager: customer.assignedManager,
+        assignedManagers: customer.assignedManagers || [], // Include all assigned managers
         preferences: customer.preferences
       },
       recentOrders,
       stats,
-      assignedCategories: customer.assignedManager?.manager_id?.assignedCategories || []
+      assignedCategories: Array.from(allAssignedCategories) // All categories from all managers
     });
   } catch (err) {
     console.error("Get customer dashboard error:", err);

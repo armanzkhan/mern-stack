@@ -338,28 +338,21 @@ const productData = [
     
     // Zepoxy Products - From the product list images (only products with prices)
     // Zepoxy Electropot series
-    { name: "Zepoxy Electropot", unit: "KG", sku: 15, price: 0, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Zepoxy Electropot", unit: "KG", sku: 24, price: 0, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Zepoxy Electropot", unit: "KG", sku: 45, price: 0, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
+    // NOTE: Removed duplicate entries with price 0 - correct entries with actual prices are listed later (lines 1155+)
     
     // Zepoxy Clear, 300, 350, 400 series
-    { name: "Zepoxy Clear", unit: "KG", sku: 24, price: 0, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
+    // NOTE: Removed duplicate entries with price 0 - correct entries with actual prices are listed later (lines 1166+)
     { name: "Zepoxy 300", unit: "KG", sku: 24, price: 0, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
     { name: "Zepoxy 350", unit: "KG", sku: 24, price: 0, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
     { name: "Zepoxy 400", unit: "KG", sku: 24, price: 0, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
     
     // Zepoxy specialty products
-    { name: "Zepoxy Resin Art", unit: "KG", sku: 24, price: 0, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
+    // Zepoxy Resin Art - removed (should only have SKU 0.75, see line 1174)
     { name: "Zepoxy Felxicure", unit: "KG", sku: 24, price: 0, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
     { name: "Zepoxy Table Top Deep Pour", unit: "KG", sku: 24, price: 0, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
     
     // Zepoxy 100, 150, 200 series - Note: These have Mini GM, Half GM, Full KG, CP KG units
-    // We'll add them with the most common unit (KG) and note the variation in description
-    { name: "Zepoxy 100", unit: "KG", sku: 0.75, price: 0, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Zepoxy 100 Y", unit: "KG", sku: 0.75, price: 0, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Zepoxy 100 Plus", unit: "KG", sku: 0.75, price: 0, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Zepoxy 150", unit: "KG", sku: 0.75, price: 0, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Zepoxy 200", unit: "KG", sku: 0.75, price: 0, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
+    // NOTE: Removed duplicate entries with price 0 - correct entries with actual prices are listed later (lines 1205+)
     
     // Zepoxy specialty applications
     { name: "Zepoxy Kara Garh", unit: "GM", sku: 0.75, price: 0, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
@@ -372,7 +365,7 @@ const productData = [
     { name: "Zepoxy Steel 90 Min", unit: "KG", sku: 2, price: 0, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
     
     // Zepoxy premium products
-    { name: "Zepoxy Crystal", unit: "KG", sku: 24.6, price: 0, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
+    // NOTE: Removed duplicate Zepoxy Crystal entry with price 0 - correct entry with actual price is listed later (line 1252)
     { name: "Zepoxy Ultimate", unit: "KG", sku: 24.6, price: 0, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
     
     // Additional Zepoxy products from the detailed list (products without prices marked with 0, can be updated later)
@@ -413,6 +406,10 @@ const productData = [
 
   // ===== DRY MIX MORTARS / PREMIX PLASTERS =====
   ...[
+    // PlastoRend 100 Base Products (without color codes)
+    { name: "Ressi PlastoRend 100", unit: "KG", sku: 1, price: 299, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
+    { name: "Ressi PlastoRend 100", unit: "KG", sku: 12, price: 2990, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
+    
     // PlastoRend 100 Series (Pigmented Hardener)
     { name: "Ressi PlastoRend 100 - 0001 B", unit: "KG", sku: 1, price: 299, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
     { name: "Ressi PlastoRend 100 - 0001 B", unit: "KG", sku: 12, price: 2990, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
@@ -889,13 +886,13 @@ const productData = [
     { name: "RDR 9111", unit: "KG", sku: 50, price: 1380, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "DecoRend" } },
     { name: "RDR 8500", unit: "KG", sku: 50, price: 1380, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "DecoRend" } },
     
-    // Ressi PlastoRend 100 Base / Machine Grade (KG 50)
-    { name: "Ressi PlastoRend 100", unit: "KG", sku: 50, price: 943, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100", unit: "KG", sku: 50, price: 1553, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
+    // Ressi PlastoRend 100 Market / Machine Grade (KG 50)
+    { name: "Ressi PlastoRend 100 (Market Grade)", unit: "KG", sku: 50, price: 943, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
+    { name: "Ressi PlastoRend 100 (Machine Grade)", unit: "KG", sku: 50, price: 1553, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
     
-    // Ressi PlastoRend 110 Base / Machine Grade (KG 50)
-    { name: "Ressi PlastoRend 110", unit: "KG", sku: 50, price: 943, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 110" } },
-    { name: "Ressi PlastoRend 110", unit: "KG", sku: 50, price: 1553, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 110" } },
+    // Ressi PlastoRend 110 Market / Machine Grade (KG 50)
+    { name: "Ressi PlastoRend 110 (Market Grade)", unit: "KG", sku: 50, price: 943, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 110" } },
+    { name: "Ressi PlastoRend 110 (Machine Grade)", unit: "KG", sku: 50, price: 1553, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 110" } },
     
     // Ressi PFS 620, Gyps O Might 9000, Lime O Might 8000, SLS 610, SLS Primer, BLM 510, BRC 7000
     { name: "Ressi PFS 620", unit: "KG", sku: 50, price: 1380, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "Specialty Mixes" } },
@@ -931,8 +928,7 @@ const productData = [
     { name: "Ressi BRC 7000", unit: "KG", sku: 50, price: 2875, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "Specialty Mixes" } },
     
     // Ressi PlastoRend 100 / 110 / 120 Base (KG 50 - 1380)
-    { name: "Ressi PlastoRend 100", unit: "KG", sku: 50, price: 1380, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 110", unit: "KG", sku: 50, price: 1380, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 110" } },
+    // NOTE: Removed duplicate base products - Market and Machine Grade versions are listed above
     { name: "Ressi PlastoRend 120", unit: "KG", sku: 2.18, price: 1438, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 120" } },
     { name: "Ressi PlastoRend 120", unit: "KG", sku: 21.8, price: 12263, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 120" } },
   ].map(p => ({
@@ -1089,13 +1085,9 @@ const productData = [
     { name: "Rapid Patch 999", unit: "KG", sku: 25, price: 69375, category: { mainCategory: "Building Care and Maintenance", subCategory: "Patch" } },
     { name: "Rapid Patch 999", unit: "KG", sku: 200, price: 550000, category: { mainCategory: "Building Care and Maintenance", subCategory: "Patch" } },
     { name: "Water Guard P 200", unit: "KG", sku: 20, price: 558, category: { mainCategory: "Building Care and Maintenance", subCategory: "Water Guard" } },
-    { name: "Heat Guard 1000", unit: "KG", sku: 20, price: 822, category: { mainCategory: "Building Care and Maintenance", subCategory: "Heat Guard" } },
-    { name: "Heat Guard 1000", unit: "KG", sku: 20, price: 1098, category: { mainCategory: "Building Care and Maintenance", subCategory: "Heat Guard" } },
-    { name: "Heat Guard 1000", unit: "KG", sku: 20, price: 1420, category: { mainCategory: "Building Care and Maintenance", subCategory: "Heat Guard" } },
-    { name: "Heat Guard 1000", unit: "KG", sku: 20, price: 1892, category: { mainCategory: "Building Care and Maintenance", subCategory: "Heat Guard" } },
-    { name: "Heat Guard 1000", unit: "KG", sku: 20, price: 2766, category: { mainCategory: "Building Care and Maintenance", subCategory: "Heat Guard" } },
-    { name: "Heat Guard 1000", unit: "KG", sku: 20, price: 2881, category: { mainCategory: "Building Care and Maintenance", subCategory: "Heat Guard" } },
-    { name: "Heat Guard 1000", unit: "KG", sku: 20, price: 3628, category: { mainCategory: "Building Care and Maintenance", subCategory: "Heat Guard" } },
+    // Heat Guard 1000 - 20 KG (keeping only the correct price: 1156)
+    // NOTE: The import script had 8 duplicate entries with different prices
+    // Database has price 1156, which matches one of the entries, so keeping that
     { name: "Heat Guard 1000", unit: "KG", sku: 20, price: 1156, category: { mainCategory: "Building Care and Maintenance", subCategory: "Heat Guard" } },
     { name: "Heat Guard 1000", unit: "KG", sku: 25, price: 12075, category: { mainCategory: "Building Care and Maintenance", subCategory: "Heat Guard" } },
     { name: "Heat Guard 1000", unit: "KG", sku: 32, price: 35650, category: { mainCategory: "Building Care and Maintenance", subCategory: "Heat Guard" } },
@@ -1179,9 +1171,12 @@ const productData = [
     { name: "Zepoxy 400", unit: "KG", sku: 1.56, price: 4681, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
     
     // Zepoxy Resin Art, Felxicure, Table Top Deep Pour
-    { name: "Zepoxy Resin Art", unit: "KG", sku: 1.5, price: 3872, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Zepoxy Resin Art", unit: "KG", sku: 15, price: 37872, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Zepoxy Resin Art", unit: "KG", sku: 45, price: 114149, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
+    // NOTE: SKU 24 removed (not in user's list), but keeping SKUs 0.75, 1.5, 15, 45
+    // Prices updated to match user's list
+    { name: "Zepoxy Resin Art", unit: "KG", sku: 0.75, price: 1170.21, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
+    { name: "Zepoxy Resin Art", unit: "KG", sku: 1.5, price: 2170.21, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
+    { name: "Zepoxy Resin Art", unit: "KG", sku: 15, price: 19680.85, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
+    { name: "Zepoxy Resin Art", unit: "KG", sku: 45, price: 59042.55, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
     { name: "Zepoxy Felxicure", unit: "KG", sku: 1.4, price: 3649, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
     { name: "Zepoxy Table Top Deep Pour", unit: "KG", sku: 0.18, price: 245, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
     { name: "Zepoxy Table Top Deep Pour", unit: "KG", sku: 0.9, price: 1068, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
@@ -1443,87 +1438,11 @@ const productData = [
     { name: "P Release - 9321", unit: "KG", sku: 10, price: 7906, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
     
     // Zepoxy Reactive Stain and Acid Itch
-    { name: "Ressi Acid Itch", unit: "LTR", sku: 1, price: 592, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Ressi Acid Itch", unit: "LTR", sku: 5, price: 2243, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Ressi Acid Itch", unit: "LTR", sku: 10, price: 4370, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Ressi Acid Itch", unit: "LTR", sku: 15, price: 6383, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Ressi Acid Itch", unit: "LTR", sku: 25, price: 12420, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Ressi Reactive Stain", unit: "LTR", sku: 1, price: 1898, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Ressi Reactive Stain", unit: "LTR", sku: 5, price: 5750, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Ressi Reactive Stain", unit: "LTR", sku: 10, price: 10925, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Ressi Reactive Stain", unit: "LTR", sku: 15, price: 15525, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Ressi Reactive Stain", unit: "LTR", sku: 25, price: 24438, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Reactive Stain - Honey White", unit: "LTR", sku: 1, price: 1898, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Reactive Stain - Honey White", unit: "LTR", sku: 5, price: 5750, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Reactive Stain - Honey White", unit: "LTR", sku: 10, price: 10925, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Reactive Stain - Honey White", unit: "LTR", sku: 15, price: 15525, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Reactive Stain - Honey White", unit: "LTR", sku: 25, price: 24438, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Reactive Stain - Nectarine", unit: "LTR", sku: 1, price: 1898, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Reactive Stain - Nectarine", unit: "LTR", sku: 5, price: 5750, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Reactive Stain - Nectarine", unit: "LTR", sku: 10, price: 10925, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Reactive Stain - Nectarine", unit: "LTR", sku: 15, price: 15525, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Reactive Stain - Nectarine", unit: "LTR", sku: 25, price: 24438, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Reactive Stain - Persimmon", unit: "LTR", sku: 1, price: 1898, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Reactive Stain - Persimmon", unit: "LTR", sku: 5, price: 5750, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Reactive Stain - Persimmon", unit: "LTR", sku: 10, price: 10925, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Reactive Stain - Persimmon", unit: "LTR", sku: 15, price: 15525, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Reactive Stain - Persimmon", unit: "LTR", sku: 25, price: 24438, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Reactive Stain - Rust Brown", unit: "LTR", sku: 1, price: 1898, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Reactive Stain - Rust Brown", unit: "LTR", sku: 5, price: 5750, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Reactive Stain - Rust Brown", unit: "LTR", sku: 10, price: 10925, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Reactive Stain - Rust Brown", unit: "LTR", sku: 15, price: 15525, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Reactive Stain - Rust Brown", unit: "LTR", sku: 25, price: 24438, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Reactive Stain - Storm Green", unit: "LTR", sku: 1, price: 1898, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Reactive Stain - Storm Green", unit: "LTR", sku: 5, price: 5750, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Reactive Stain - Storm Green", unit: "LTR", sku: 10, price: 10925, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Reactive Stain - Storm Green", unit: "LTR", sku: 15, price: 15525, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Reactive Stain - Storm Green", unit: "LTR", sku: 25, price: 24438, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Reactive Stain - Cool Blue", unit: "LTR", sku: 1, price: 1898, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Reactive Stain - Cool Blue", unit: "LTR", sku: 5, price: 5750, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Reactive Stain - Cool Blue", unit: "LTR", sku: 10, price: 10925, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Reactive Stain - Cool Blue", unit: "LTR", sku: 15, price: 15525, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Reactive Stain - Cool Blue", unit: "LTR", sku: 25, price: 24438, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Reactive Stain - Kahlua", unit: "LTR", sku: 1, price: 1898, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Reactive Stain - Kahlua", unit: "LTR", sku: 5, price: 5750, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Reactive Stain - Kahlua", unit: "LTR", sku: 10, price: 10925, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Reactive Stain - Kahlua", unit: "LTR", sku: 15, price: 15525, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Reactive Stain - Kahlua", unit: "LTR", sku: 25, price: 24438, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Reactive Stain - Citrus Green", unit: "LTR", sku: 1, price: 1898, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Reactive Stain - Citrus Green", unit: "LTR", sku: 5, price: 5750, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Reactive Stain - Citrus Green", unit: "LTR", sku: 10, price: 10925, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Reactive Stain - Citrus Green", unit: "LTR", sku: 15, price: 15525, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Reactive Stain - Citrus Green", unit: "LTR", sku: 25, price: 24438, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
+    // NOTE: Ressi Reactive Stain and all color variants are correctly listed in "Decorative Concrete" section (lines 258-297)
+    // These duplicate entries in "Epoxy Adhesives and Coatings" have been removed
     
-    // Reactive Stain (Main Product with different SKUs)
-    { name: "Ressi Reactive Stain", unit: "LTR", sku: 1, price: 920, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Ressi Reactive Stain", unit: "LTR", sku: 5, price: 4543, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Ressi Reactive Stain", unit: "LTR", sku: 10, price: 8855, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Ressi Reactive Stain", unit: "LTR", sku: 15, price: 13110, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Ressi Reactive Stain", unit: "LTR", sku: 25, price: 26220, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    
-    // Ressi Neutraliser, Polymer, Microtopping System
-    { name: "Ressi Neutraliser", unit: "LTR", sku: 1, price: 1254, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Ressi Neutraliser", unit: "LTR", sku: 5, price: 6153, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Ressi Neutraliser", unit: "LTR", sku: 10, price: 12075, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Ressi Neutraliser", unit: "LTR", sku: 15, price: 17768, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Ressi Neutraliser", unit: "LTR", sku: 25, price: 29038, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Ressi Polymer", unit: "LTR", sku: 1, price: 1898, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Ressi Polymer", unit: "LTR", sku: 5, price: 5750, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Ressi Polymer", unit: "LTR", sku: 10, price: 10925, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Ressi Polymer", unit: "LTR", sku: 15, price: 15525, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Ressi Polymer", unit: "LTR", sku: 25, price: 24438, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "MT Base Coat", unit: "KG", sku: 20, price: 1610, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "MT Top Coat", unit: "KG", sku: 20, price: 2300, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "MT - Polymer Liquid", unit: "KG", sku: 1, price: 3335, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "MT - Polymer Liquid", unit: "KG", sku: 5, price: 16100, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "MT - Polymer Liquid", unit: "KG", sku: 10, price: 31050, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "MT - Polymer Liquid", unit: "KG", sku: 15, price: 44850, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "MT - Polymer Liquid", unit: "KG", sku: 25, price: 86250, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Terrazzo Retarder", unit: "KG", sku: 1, price: 3335, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Terrazzo Retarder", unit: "KG", sku: 5, price: 16100, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Terrazzo Retarder", unit: "KG", sku: 10, price: 31050, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Terrazzo Retarder", unit: "KG", sku: 15, price: 44850, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Terrazzo Retarder", unit: "KG", sku: 25, price: 86250, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
+    // Ressi Reactive Stain, Ressi Neutraliser, Polymer, MT Base Coat, MT Top Coat, MT - Polymer Liquid, Terrazzo Retarder
+    // REMOVED - All duplicates, correct entries are in Decorative Concrete section
     
     // Specialty Products
     { name: "Ressi NSG 710", unit: "KG", sku: 20, price: 2100, category: { mainCategory: "Specialty Products", subCategory: "Specialty" } },

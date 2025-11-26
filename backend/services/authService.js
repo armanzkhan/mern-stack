@@ -78,6 +78,10 @@ async function generateToken(user, expiresIn = "1h", isRefresh = false) {
     lastName: user.lastName,
     perms: encrypted,
     isSuperAdmin,
+    // Include user type flags for role-based filtering
+    isManager: user.isManager === true,
+    isCustomer: user.isCustomer === true,
+    isCompanyAdmin: user.isCompanyAdmin === true,
   };
 
   return jwt.sign(payload, isRefresh ? REFRESH_SECRET : JWT_SECRET, { expiresIn });

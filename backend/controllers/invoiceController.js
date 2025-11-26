@@ -14,6 +14,8 @@ exports.getInvoices = async (req, res) => {
       email: req.user?.email,
       isManager: req.user?.isManager,
       isCustomer: req.user?.isCustomer,
+      isCompanyAdmin: req.user?.isCompanyAdmin,
+      isSuperAdmin: req.user?.isSuperAdmin,
       managerProfile: req.user?.managerProfile,
       customerProfile: req.user?.customerProfile
     });
@@ -32,8 +34,37 @@ exports.getInvoices = async (req, res) => {
 
     console.log('🔍 Initial filters:', filters);
 
+    // Get user flags from JWT or database (fallback for old tokens)
+    let isCompanyAdmin = req.user?.isCompanyAdmin === true;
+    let isSuperAdmin = req.user?.isSuperAdmin === true;
+    let isCustomer = req.user?.isCustomer === true;
+    let isManager = req.user?.isManager === true;
+    
+    // If flags not in JWT, check database (for backward compatibility with old tokens)
+    if (req.user?.user_id && (!isCompanyAdmin && !isCustomer && !isManager)) {
+      const User = require('../models/User');
+      const fullUser = await User.findOne({ 
+        user_id: req.user.user_id, 
+        company_id: companyId 
+      }).select('isManager isCustomer isCompanyAdmin isSuperAdmin');
+      
+      if (fullUser) {
+        isManager = fullUser.isManager === true;
+        isCustomer = fullUser.isCustomer === true;
+        isCompanyAdmin = fullUser.isCompanyAdmin === true;
+        isSuperAdmin = isSuperAdmin || fullUser.isSuperAdmin === true;
+        console.log(`🔍 User flags from database:`, { isManager, isCustomer, isCompanyAdmin, isSuperAdmin });
+      }
+    }
+    
+    // Company admins and super admins can see ALL invoices for their company
+    if (isCompanyAdmin || isSuperAdmin) {
+      console.log(`✅ Company Admin/Super Admin detected: ${req.user?.email} - showing ALL invoices for company ${companyId}`);
+      // Don't apply customer or manager filters - show all invoices
+      // Only apply query filters (status, date range, etc.) if provided
+    }
     // Check if user is a customer - if so, filter by their customer record
-    if (req.user && req.user.isCustomer) {
+    else if (isCustomer) {
       const Customer = require('../models/Customer');
       const currentUser = await require('../models/User').findById(req.user._id).select('email');
       
@@ -68,10 +99,12 @@ exports.getInvoices = async (req, res) => {
       }
     }
     // If managerId is provided, use it; otherwise, if user is a manager, filter by their User._id
-    else if (!filters.managerId && req.user?.isManager && req.user?._id) {
+    // Skip this for company admins and super admins (they see all invoices)
+    else if (!isCompanyAdmin && !isSuperAdmin && !filters.managerId && isManager && req.user?._id) {
       // Use User._id instead of manager_id, as approvedBy stores User._id
       filters.managerId = req.user._id.toString();
       filters.managerApprovedOnly = true; // For managers, only show invoices from their approved items
+      console.log(`🔍 Manager user detected: ${req.user?.email} - filtering invoices for manager ID: ${filters.managerId}`);
     }
 
     console.log('🔍 Final filters:', filters);
@@ -119,8 +152,19 @@ exports.getInvoiceById = async (req, res) => {
       isCustomer: req.user?.isCustomer
     });
     
+    // Check if user is a customer (from JWT or database)
+    let isCustomer = req.user?.isCustomer === true;
+    if (!isCustomer && req.user?.user_id) {
+      const User = require('../models/User');
+      const fullUser = await User.findOne({ 
+        user_id: req.user.user_id, 
+        company_id: companyId 
+      }).select('isCustomer');
+      isCustomer = fullUser?.isCustomer === true;
+    }
+    
     // If user is a customer, verify the invoice belongs to them
-    if (req.user && req.user.isCustomer) {
+    if (isCustomer) {
       const Customer = require('../models/Customer');
       const currentUser = await require('../models/User').findById(req.user._id).select('email');
       
@@ -428,8 +472,19 @@ exports.getInvoiceStats = async (req, res) => {
     const companyId = req.headers?.['x-company-id'] || req.user?.company_id || "RESSICHEM";
     let customerId = null;
     
+    // Check if user is a customer (from JWT or database)
+    let isCustomer = req.user?.isCustomer === true;
+    if (!isCustomer && req.user?.user_id) {
+      const User = require('../models/User');
+      const fullUser = await User.findOne({ 
+        user_id: req.user.user_id, 
+        company_id: companyId 
+      }).select('isCustomer');
+      isCustomer = fullUser?.isCustomer === true;
+    }
+    
     // Check if user is a customer - if so, filter by their customer record
-    if (req.user && req.user.isCustomer) {
+    if (isCustomer) {
       const Customer = require('../models/Customer');
       const currentUser = await require('../models/User').findById(req.user._id).select('email');
       

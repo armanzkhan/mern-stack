@@ -32,7 +32,7 @@ const customerSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId, 
       ref: "User" 
     },
-    // Manager assignment for existing customers
+    // Manager assignment for existing customers (legacy - single manager)
     assignedManager: {
       manager_id: { type: mongoose.Schema.Types.ObjectId, ref: "Manager" },
       assignedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
@@ -40,6 +40,14 @@ const customerSchema = new mongoose.Schema(
       isActive: { type: Boolean, default: true },
       notes: { type: String }
     },
+    // Multiple manager assignments (new - supports multiple managers)
+    assignedManagers: [{
+      manager_id: { type: mongoose.Schema.Types.ObjectId, ref: "Manager", required: true },
+      assignedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+      assignedAt: { type: Date, default: Date.now },
+      isActive: { type: Boolean, default: true },
+      notes: { type: String }
+    }],
     // Customer preferences
     preferences: {
       preferredCategories: [{ type: String }],

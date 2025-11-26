@@ -89,4 +89,19 @@ ManagerSchema.methods.getCategoryList = function() {
     .map(cat => cat.category);
 };
 
+// Post-save hook to auto-sync with User.managerProfile
+ManagerSchema.post('save', async function() {
+  try {
+    // Only sync if categories or preferences were modified
+    if (this.isModified('assignedCategories') || this.isModified('notificationPreferences')) {
+      const managerSyncService = require('../services/managerSyncService');
+      await managerSyncService.syncManagerToUser(this._id, this.company_id);
+      console.log(`✅ Auto-synced manager ${this._id} to user profile`);
+    }
+  } catch (error) {
+    // Don't throw error in post-save hook, just log it
+    console.error(`⚠️ Error auto-syncing manager ${this._id}:`, error.message);
+  }
+});
+
 module.exports = mongoose.model("Manager", ManagerSchema);

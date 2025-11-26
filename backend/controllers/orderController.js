@@ -71,6 +71,9 @@ exports.createOrder = async (req, res) => {
 
     await order.save();
 
+    // Populate customer for notifications
+    await order.populate('customer', 'email companyName contactName');
+
     // Create item-level approvals (NEW SYSTEM)
     try {
       await itemApprovalService.createItemApprovals(order);
@@ -85,6 +88,42 @@ exports.createOrder = async (req, res) => {
       realtimeService.sendNewOrderNotification(order);
     } catch (realtimeError) {
       console.error("Realtime notification error:", realtimeError);
+    }
+
+    // Prepare createdBy information - use customer info if available, otherwise use req.user
+    let createdBy = null;
+    if (order.customer) {
+      // Use customer information
+      const customerName = order.customer.contactName || 
+                          order.customer.companyName || 
+                          order.customer.email || 
+                          'Customer';
+      createdBy = {
+        _id: order.customer._id,
+        name: customerName,
+        email: order.customer.email,
+        firstName: order.customer.contactName?.split(' ')[0] || null,
+        lastName: order.customer.contactName?.split(' ').slice(1).join(' ') || null
+      };
+    } else if (req.user) {
+      // Use req.user information - construct name from firstName/lastName if needed
+      const userName = req.user.firstName && req.user.lastName
+        ? `${req.user.firstName} ${req.user.lastName}`
+        : req.user.name || req.user.email || 'User';
+      createdBy = {
+        _id: req.user._id,
+        name: userName,
+        email: req.user.email,
+        firstName: req.user.firstName || null,
+        lastName: req.user.lastName || null
+      };
+    } else {
+      // Fallback to system
+      createdBy = { 
+        _id: 'system', 
+        name: 'System', 
+        email: 'system@ressichem.com' 
+      };
     }
 
     // Send notification to customer about order creation
@@ -118,7 +157,6 @@ exports.createOrder = async (req, res) => {
 
     // Send category-based notifications to managers
     try {
-      const createdBy = req.user || { _id: 'system', name: 'System', email: 'system@ressichem.com' };
       await categoryNotificationService.notifyOrderUpdate(order, 'created', createdBy);
     } catch (notificationError) {
       console.error("Failed to send category manager notifications:", notificationError);
@@ -127,7 +165,6 @@ exports.createOrder = async (req, res) => {
 
     // Send notification about new order
     try {
-      const createdBy = req.user || { _id: 'system', name: 'System', email: 'system@ressichem.com' };
       await notificationTriggerService.triggerOrderCreated(order, createdBy);
     } catch (notificationError) {
       console.error("Failed to send order creation notification:", notificationError);
@@ -287,6 +324,7 @@ exports.getOrders = async (req, res) => {
     
     // Check if user is a customer - if so, filter by their orders only
     let query = { company_id: companyId };
+    let fullUser = null; // Declare outside to use later
     
     if (req.user && req.user.isCustomer) {
       // For customer users, find their customer record and filter orders
@@ -315,48 +353,156 @@ exports.getOrders = async (req, res) => {
         console.log(`⚠️ Current user not found in database for ID: ${req.user._id}`);
         return res.json([]);
       }
-    } else if (req.user && req.user.isManager && req.user.managerProfile?.assignedCategories) {
-      // For manager users, filter by their assigned categories
-      const managerCategories = req.user.managerProfile.assignedCategories;
-      console.log(`🔍 Manager ${req.user.email} assigned categories:`, managerCategories);
+    } else {
+      // Check if user is a manager by querying the database
+      // (JWT token doesn't include isManager, so we need to check the database)
+      fullUser = await User.findOne({ 
+        user_id: req.user?.user_id, 
+        company_id: companyId 
+      }).select('isManager managerProfile _id');
       
-      // Filter orders that have products in the manager's assigned categories
-      query = {
-        company_id: companyId,
-        $or: [
-          // Orders with categories matching manager's assigned categories
-          { categories: { $in: managerCategories } },
-          // Orders with products in manager's assigned categories
-          { 
-            "items.product": {
-              $in: await Product.find({
-                company_id: companyId,
-                $or: [
-                  { "category.mainCategory": { $in: managerCategories } },
-                  { "category.subCategory": { $in: managerCategories } },
-                  { "category.subSubCategory": { $in: managerCategories } }
-                ]
-              }).distinct('_id')
-            }
+      if (fullUser && fullUser.isManager) {
+        // For manager users, use OrderItemApproval as primary source (most reliable)
+        console.log(`🔍 Manager user detected: ${req.user?.email}, user_id: ${req.user?.user_id}, User._id: ${fullUser._id}`);
+        
+        let managerCategories = [];
+        
+        // Check User.managerProfile.assignedCategories first
+        if (fullUser.managerProfile && fullUser.managerProfile.assignedCategories) {
+          managerCategories = Array.isArray(fullUser.managerProfile.assignedCategories) 
+            ? fullUser.managerProfile.assignedCategories 
+            : [];
+          console.log(`🔍 Manager categories from User.managerProfile:`, managerCategories);
+        }
+        
+        // If User.managerProfile.assignedCategories is empty, check Manager record
+        if (managerCategories.length === 0) {
+          const manager = await Manager.findOne({ 
+            user_id: req.user.user_id, 
+            company_id: companyId 
+          });
+          
+          if (manager && manager.assignedCategories && manager.assignedCategories.length > 0) {
+            // Extract category names from Manager.assignedCategories array
+            managerCategories = manager.assignedCategories.map(cat => {
+              if (typeof cat === 'string') return cat;
+              return cat.category || cat;
+            });
+            console.log(`🔍 Manager categories from Manager record:`, managerCategories);
+          } else {
+            console.log(`⚠️ No Manager record found or no assigned categories for user ${req.user.user_id}`);
           }
-        ]
-      };
-      
-      console.log(`📋 Filtering orders for manager categories:`, managerCategories);
+        }
+        
+        // PRIMARY METHOD: Use OrderItemApproval to find orders assigned to this manager
+        const OrderItemApproval = require('../models/OrderItemApproval');
+        console.log(`🔍 Looking for approvals with assignedManager: ${fullUser._id} (User._id from database)`);
+        console.log(`🔍 Manager email: ${req.user?.email}, user_id: ${req.user?.user_id}`);
+        console.log(`🔍 Company ID: ${companyId}`);
+        
+        // First, let's check if there are ANY approvals for this manager
+        const allApprovalsForManager = await OrderItemApproval.find({
+          assignedManager: fullUser._id,
+          company_id: companyId
+        });
+        console.log(`🔍 Total approvals found for manager: ${allApprovalsForManager.length}`);
+        if (allApprovalsForManager.length > 0) {
+          console.log(`   Sample approval:`, {
+            _id: allApprovalsForManager[0]._id,
+            orderId: allApprovalsForManager[0].orderId,
+            assignedManager: allApprovalsForManager[0].assignedManager,
+            category: allApprovalsForManager[0].category,
+            status: allApprovalsForManager[0].status
+          });
+        }
+        
+        const approvalOrderIds = await OrderItemApproval.find({
+          assignedManager: fullUser._id, // Use fullUser._id (User._id) not req.user._id
+          company_id: companyId
+        }).distinct('orderId');
+        
+        console.log(`✅ Found ${approvalOrderIds.length} unique orders via item approvals for manager ${req.user?.email}`);
+        if (approvalOrderIds.length > 0) {
+          console.log(`   Order IDs: ${approvalOrderIds.map(id => id.toString()).join(', ')}`);
+        }
+        
+        if (approvalOrderIds.length > 0) {
+          // Use orders from approvals
+          query = {
+            _id: { $in: approvalOrderIds },
+            company_id: companyId
+          };
+          console.log(`📋 Query built:`, JSON.stringify(query, null, 2));
+          console.log(`📋 Using ${approvalOrderIds.length} orders from item approvals`);
+        } else if (managerCategories.length > 0) {
+          // FALLBACK: Use normalized category matching if no approvals found
+          console.log(`⚠️ No item approvals found, falling back to normalized category matching`);
+          
+          // Normalize category name function
+          const normalizeCategory = (cat) => {
+            if (!cat || typeof cat !== 'string') return '';
+            return cat.toLowerCase().trim()
+              .replace(/\s*&\s*/g, ' and ')
+              .replace(/\s+/g, ' ');
+          };
+          
+          // Normalize manager categories
+          const normalizedManagerCategories = managerCategories.map(cat => 
+            normalizeCategory(typeof cat === 'string' ? cat : (cat.category || cat))
+          );
+          
+          console.log(`🔍 Normalized manager categories:`, normalizedManagerCategories);
+          
+          // Get all orders and filter by normalized category matching
+          const allOrders = await Order.find({ company_id: companyId })
+            .select('_id categories');
+          
+          const matchingOrderIds = allOrders
+            .filter(order => {
+              if (!order.categories || order.categories.length === 0) return false;
+              return order.categories.some(orderCat => {
+                const normalizedOrderCat = normalizeCategory(orderCat);
+                return normalizedManagerCategories.some(managerCat => 
+                  normalizedOrderCat === managerCat ||
+                  normalizedOrderCat.includes(managerCat) ||
+                  managerCat.includes(normalizedOrderCat)
+                );
+              });
+            })
+            .map(order => order._id);
+          
+          query = {
+            _id: { $in: matchingOrderIds },
+            company_id: companyId
+          };
+          console.log(`✅ Found ${matchingOrderIds.length} orders via normalized category matching`);
+        } else {
+          console.log(`⚠️ Manager ${req.user?.email} has no assigned categories - returning empty result`);
+          query = { company_id: companyId, _id: null }; // Return no orders
+        }
+      }
     }
     
-    const orders = await Order.find(query)
+    let orders = await Order.find(query)
       .populate("customer", "companyName contactName email")
       .populate("items.product", "name price category")
       .populate("createdBy", "email firstName lastName")
       .sort({ createdAt: -1 });
+    
+    // For managers, the query above already filtered by OrderItemApproval or normalized categories
+    // So we don't need additional filtering here - the orders are already correct
+    // But we can add a final verification if needed
+    if (req.user && fullUser && fullUser.isManager) {
+      console.log(`✅ Manager ${req.user?.email}: Returning ${orders.length} orders (already filtered by approvals/categories)`);
+    }
     
     console.log(`📊 Found ${orders.length} orders for user ${req.user?.email || 'anonymous'}`);
     console.log(`📊 Orders details:`, orders.map(order => ({
       orderNumber: order.orderNumber,
       customer: order.customer?.companyName,
       status: order.status,
-      total: order.total
+      total: order.total,
+      itemCount: order.items?.length || 0
     })));
     res.json(orders);
   } catch (err) {
@@ -368,12 +514,123 @@ exports.getOrders = async (req, res) => {
 // Get order by ID
 exports.getOrderById = async (req, res) => {
   try {
+    const companyId = req.headers['x-company-id'] || req.user?.company_id || "RESSICHEM";
     const order = await Order.findById(req.params.id)
       .populate("customer", "companyName contactName email")
-      .populate("items.product", "name price");
+      .populate("items.product", "name price category");
+    
     if (!order) return res.status(404).json({ message: "Order not found" });
+    
+    // Check if user is a manager and filter items by assigned categories
+    let isManager = req.user?.isManager === true;
+    let managerCategories = [];
+    
+    // If flags not in JWT, check database (for backward compatibility with old tokens)
+    if (!isManager && req.user?.user_id) {
+      const fullUser = await User.findOne({ 
+        user_id: req.user.user_id, 
+        company_id: companyId 
+      }).select('isManager managerProfile');
+      
+      if (fullUser && fullUser.isManager) {
+        isManager = true;
+        if (fullUser.managerProfile && fullUser.managerProfile.assignedCategories) {
+          managerCategories = Array.isArray(fullUser.managerProfile.assignedCategories) 
+            ? fullUser.managerProfile.assignedCategories 
+            : [];
+        }
+      }
+    } else if (isManager) {
+      // Get categories from JWT or database
+      managerCategories = req.user?.managerProfile?.assignedCategories || [];
+    }
+    
+    // If manager has no categories in user profile, check Manager record
+    if (isManager && managerCategories.length === 0) {
+      const manager = await Manager.findOne({ 
+        user_id: req.user.user_id, 
+        company_id: companyId 
+      });
+      
+      if (manager && manager.assignedCategories && manager.assignedCategories.length > 0) {
+        managerCategories = manager.assignedCategories.map(cat => {
+          if (typeof cat === 'string') return cat;
+          return cat.category || cat;
+        });
+        console.log(`🔍 Manager categories from Manager record for order view:`, managerCategories);
+      }
+    }
+    
+    // Filter items for managers - only show items assigned to them via OrderItemApproval
+    if (isManager && managerCategories.length > 0) {
+      // Get all OrderItemApproval entries for this order assigned to this manager
+      const OrderItemApproval = require('../models/OrderItemApproval');
+      const itemApprovals = await OrderItemApproval.find({
+        orderId: order._id,
+        assignedManager: req.user._id,
+        company_id: companyId
+      });
+      
+      console.log(`🔍 Manager ${req.user?.email} viewing order ${order.orderNumber}:`);
+      console.log(`   Found ${itemApprovals.length} item approval entries assigned to this manager`);
+      console.log(`   Order has ${order.items.length} total items`);
+      
+      // Create a map of itemIndex to approval entry
+      const approvalMap = new Map();
+      itemApprovals.forEach(approval => {
+        approvalMap.set(approval.itemIndex, approval);
+      });
+      
+      // Filter items to only include those assigned to this manager via OrderItemApproval
+      const filteredItems = order.items.filter((item, index) => {
+        // Check if this item has an approval entry assigned to this manager
+        const hasApprovalEntry = approvalMap.has(index);
+        
+        if (!hasApprovalEntry) {
+          console.log(`   ⚠️ Item ${index} (${item.product?.name}) not assigned to manager ${req.user?.email}`);
+          return false;
+        }
+        
+        // Also verify category matches (double check)
+        if (!item.product?.category) {
+          console.log(`   ⚠️ Item ${index} has no category`);
+          return false;
+        }
+        
+        const productCategory = item.product.category;
+        const categoryMatches = managerCategories.some(managerCat => {
+          if (typeof productCategory === 'string') {
+            return productCategory.includes(managerCat) || managerCat.includes(productCategory);
+          }
+          return (
+            productCategory.mainCategory === managerCat ||
+            productCategory.subCategory === managerCat ||
+            productCategory.subSubCategory === managerCat ||
+            (productCategory.mainCategory && productCategory.mainCategory.includes(managerCat)) ||
+            (productCategory.subCategory && productCategory.subCategory.includes(managerCat))
+          );
+        });
+        
+        if (!categoryMatches) {
+          console.log(`   ⚠️ Item ${index} category doesn't match manager's categories`);
+        }
+        
+        return categoryMatches;
+      });
+      
+      console.log(`   ✅ Filtered to ${filteredItems.length} items assigned to this manager`);
+      
+      // Return order with filtered items
+      const filteredOrder = order.toObject();
+      filteredOrder.items = filteredItems;
+      
+      return res.json(filteredOrder);
+    }
+    
+    // For non-managers or managers without categories, return full order
     res.json(order);
   } catch (err) {
+    console.error("Error fetching order by ID:", err);
     res.status(500).json({ message: "Error fetching order", error: err.message });
   }
 };

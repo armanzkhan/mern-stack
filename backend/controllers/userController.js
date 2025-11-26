@@ -75,8 +75,26 @@ exports.createUser = async (req, res) => {
       }
     }
 
-    // If this is a manager, initialize managerProfile
+    // Validate: Customers cannot be assigned as managers
+    if ((userData.isCustomer || userData.userType === 'customer') && 
+        (userData.isManager || userData.userType === 'manager')) {
+      return res.status(400).json({ 
+        message: "A user cannot be both a customer and a manager. Please choose one role." 
+      });
+    }
+
+    // If this is a manager, initialize managerProfile and set isManager flag
     if (userData.isManager || userData.userType === 'manager') {
+      // Additional validation: Ensure user is not already a customer
+      if (userData.isCustomer || userData.userType === 'customer' || userData.customerProfile?.customer_id) {
+        return res.status(400).json({ 
+          message: "Customers cannot be assigned as managers. Please remove customer role first." 
+        });
+      }
+      
+      // Ensure isManager flag is set
+      userData.isManager = true;
+      
       if (!userData.managerProfile) {
         userData.managerProfile = {
           assignedCategories: [],
@@ -96,6 +114,131 @@ exports.createUser = async (req, res) => {
 
     const user = new User(userData);
     await user.save();
+    console.log(`✅ User saved to database: ${user.email}, isManager: ${user.isManager}, userType: ${userData.userType}`);
+    
+    // If this is a manager user, create manager record and category assignments
+    if (userData.isManager || userData.userType === 'manager') {
+      try {
+        const Manager = require('../models/Manager');
+        const CategoryAssignment = require('../models/CategoryAssignment');
+        const managerSyncService = require('../services/managerSyncService');
+        
+        // Check if manager already exists
+        const existingManager = await Manager.findOne({ 
+          user_id: user.user_id, 
+          company_id: user.company_id 
+        });
+        
+        if (existingManager) {
+          console.log(`⚠️ Manager already exists for user ${user.email}, updating...`);
+          
+          // Update existing manager record
+          if (userData.assignedCategories && userData.assignedCategories.length > 0) {
+            existingManager.assignedCategories = userData.assignedCategories.map(category => ({
+              category: typeof category === 'string' ? category : (category.category || category),
+              assignedBy: req.user?._id || existingManager.assignedCategories[0]?.assignedBy || null,
+              assignedAt: new Date(),
+              isActive: true
+            }));
+          }
+          existingManager.isActive = true;
+          await existingManager.save();
+          console.log(`✅ Existing Manager record updated for user ${user.email}`);
+          
+          // Update user's managerProfile with manager_id
+          if (!user.managerProfile) {
+            user.managerProfile = {};
+          }
+          user.managerProfile.manager_id = existingManager._id;
+          user.isManager = true; // Ensure flag is set
+          await user.save();
+          console.log(`✅ User record updated with manager_id: ${user.email}`);
+          
+          // Sync to ensure consistency
+          await managerSyncService.ensureSync(existingManager._id, user.company_id);
+        } else {
+          // Get assignedCategories from userData or managerProfile
+          const assignedCategories = userData.assignedCategories || 
+                                   userData.managerProfile?.assignedCategories || 
+                                   [];
+          
+          // Create Manager record
+          const manager = new Manager({
+            user_id: user.user_id,
+            company_id: user.company_id,
+            assignedCategories: assignedCategories.map(category => ({
+              category: typeof category === 'string' ? category : (category.category || category),
+              assignedBy: req.user?._id || null,
+              assignedAt: new Date(),
+              isActive: true
+            })),
+            managerLevel: userData.managerLevel || userData.managerProfile?.managerLevel || 'junior',
+            notificationPreferences: userData.notificationPreferences || userData.managerProfile?.notificationPreferences || {
+              orderUpdates: true,
+              stockAlerts: true,
+              statusChanges: true,
+              newOrders: true,
+              lowStock: true,
+              categoryReports: true
+            },
+            isActive: true,
+            createdBy: req.user?._id || null
+          });
+          
+          await manager.save();
+          console.log(`✅ Manager record saved to database for user ${user.email} (Manager ID: ${manager._id})`);
+          
+          // Update user's managerProfile with manager_id and ensure isManager is true
+          if (!user.managerProfile) {
+            user.managerProfile = {};
+          }
+          user.managerProfile.manager_id = manager._id;
+          user.isManager = true; // Ensure flag is set
+          if (assignedCategories.length > 0) {
+            user.managerProfile.assignedCategories = assignedCategories.map(cat => 
+              typeof cat === 'string' ? cat : (cat.category || cat)
+            );
+          }
+          await user.save();
+          console.log(`✅ User record updated and saved with manager_id: ${user.email}, isManager: ${user.isManager}`);
+          
+          // Sync to ensure consistency (this will also sync categories)
+          await managerSyncService.ensureSync(manager._id, user.company_id);
+          console.log(`✅ Manager sync completed for user ${user.email}`);
+          
+          // Create CategoryAssignment records
+          for (const category of assignedCategories) {
+            try {
+              const categoryName = typeof category === 'string' ? category : (category.category || category);
+              const assignment = new CategoryAssignment({
+                manager_id: manager._id,
+                user_id: user.user_id,
+                company_id: user.company_id,
+                category: categoryName,
+                assignedBy: req.user?._id || null,
+                isActive: true,
+                isPrimary: true,
+                permissions: {
+                  canUpdateStatus: true,
+                  canAddComments: true,
+                  canViewReports: true,
+                  canManageProducts: true
+                }
+              });
+              await assignment.save();
+              console.log(`✅ Category assignment saved to database: ${categoryName} for manager ${manager._id}`);
+            } catch (assignmentError) {
+              console.error(`❌ Error creating category assignment for ${category}:`, assignmentError);
+              // Continue with other categories
+            }
+          }
+        }
+      } catch (managerError) {
+        console.error("❌ Error creating manager record:", managerError);
+        console.error("❌ Error stack:", managerError.stack);
+        // Don't fail user creation if manager creation fails, but log it
+      }
+    }
     
     // If this is a customer user, create customer record and assignments
     if (userData.isCustomer || userData.userType === 'customer') {
@@ -127,7 +270,55 @@ exports.createUser = async (req, res) => {
         const customer = new Customer(customerData);
         await customer.save();
 
-        // Note: No manager assignment - orders will be routed dynamically based on product categories
+        // Assign managers to customer if provided
+        if (userData.assignedManagers && Array.isArray(userData.assignedManagers) && userData.assignedManagers.length > 0) {
+          try {
+            const Manager = require('../models/Manager');
+            const assignedManagers = [];
+            
+            for (const managerId of userData.assignedManagers) {
+              // Find manager by _id or user_id
+              const manager = await Manager.findOne({
+                $or: [
+                  { _id: managerId },
+                  { user_id: managerId }
+                ],
+                company_id: userData.company_id,
+                isActive: true
+              });
+              
+              if (manager) {
+                assignedManagers.push({
+                  manager_id: manager._id,
+                  assignedBy: req.user?._id || req.user?.user_id || null,
+                  assignedAt: new Date(),
+                  isActive: true
+                });
+                console.log(`✅ Assigned manager ${manager._id} to customer ${customer._id}`);
+              } else {
+                console.warn(`⚠️ Manager not found: ${managerId}`);
+              }
+            }
+            
+            if (assignedManagers.length > 0) {
+              customer.assignedManagers = assignedManagers;
+              // Also set the first manager as assignedManager for backward compatibility
+              if (assignedManagers[0]) {
+                customer.assignedManager = {
+                  manager_id: assignedManagers[0].manager_id,
+                  assignedBy: assignedManagers[0].assignedBy,
+                  assignedAt: assignedManagers[0].assignedAt,
+                  isActive: true
+                };
+              }
+              await customer.save();
+              console.log(`✅ Assigned ${assignedManagers.length} manager(s) to customer ${customer._id}`);
+            }
+          } catch (managerError) {
+            console.error("Error assigning managers to customer:", managerError);
+            // Don't fail customer creation if manager assignment fails
+          }
+        }
 
         // Send welcome notification to customer
         try {
@@ -215,6 +406,38 @@ exports.createUser = async (req, res) => {
       // Don't fail the user creation if notification fails
     }
     
+    // Verify manager data was saved correctly (for managers only)
+    if (user.isManager || userData.isManager || userData.userType === 'manager') {
+      try {
+        const Manager = require('../models/Manager');
+        const savedManager = await Manager.findOne({ 
+          user_id: user.user_id, 
+          company_id: user.company_id 
+        });
+        
+        if (savedManager) {
+          console.log(`✅ VERIFICATION: Manager record found in database for ${user.email}`);
+          console.log(`   - Manager ID: ${savedManager._id}`);
+          console.log(`   - User ID: ${savedManager.user_id}`);
+          console.log(`   - Is Active: ${savedManager.isActive}`);
+          console.log(`   - Categories: ${savedManager.assignedCategories?.length || 0}`);
+        } else {
+          console.warn(`⚠️ VERIFICATION: Manager record NOT found in database for ${user.email}`);
+        }
+        
+        // Verify user record
+        const savedUser = await User.findById(user._id);
+        if (savedUser) {
+          console.log(`✅ VERIFICATION: User record found in database for ${user.email}`);
+          console.log(`   - Is Manager: ${savedUser.isManager}`);
+          console.log(`   - Has Manager Profile: ${!!savedUser.managerProfile}`);
+          console.log(`   - Manager ID in profile: ${savedUser.managerProfile?.manager_id || 'None'}`);
+        }
+      } catch (verifyError) {
+        console.error("❌ Error verifying manager data:", verifyError);
+      }
+    }
+    
     // Return user without password
     const userResponse = user.toObject();
     delete userResponse.password;
@@ -229,15 +452,37 @@ exports.createUser = async (req, res) => {
 // Update user
 exports.updateUser = async (req, res) => {
   try {
+    // Get existing user to check current status
+    const existingUser = await User.findById(req.params.id);
+    if (!existingUser) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Validate: Customers cannot be assigned as managers
+    const isBecomingManager = req.body.isManager === true || req.body.userType === 'manager';
+    const isCurrentlyCustomer = existingUser.isCustomer || existingUser.customerProfile?.customer_id;
+    
+    if (isCurrentlyCustomer && isBecomingManager) {
+      return res.status(400).json({ 
+        message: "Cannot assign manager role: This user is a customer. Customers cannot be managers." 
+      });
+    }
+
+    // Validate: Managers cannot be assigned as customers
+    const isBecomingCustomer = req.body.isCustomer === true || req.body.userType === 'customer';
+    const isCurrentlyManager = existingUser.isManager || existingUser.managerProfile?.manager_id;
+    
+    if (isCurrentlyManager && isBecomingCustomer) {
+      return res.status(400).json({ 
+        message: "Cannot assign customer role: This user is a manager. Managers cannot be customers." 
+      });
+    }
+
     const user = await User.findByIdAndUpdate(
       req.params.id,
       req.body,
       { new: true, runValidators: true }
     );
-    
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
     
     res.json(user);
   } catch (error) {

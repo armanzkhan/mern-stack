@@ -5,7 +5,7 @@ const NotificationSchema = new mongoose.Schema({
   message: { type: String, required: true },
   type: { 
     type: String, 
-    enum: ['info', 'success', 'warning', 'error', 'order', 'delivery', 'invoice', 'payment', 'system', 'item_approval_status', 'discount_updated'],
+    enum: ['info', 'success', 'warning', 'error', 'order', 'delivery', 'invoice', 'payment', 'system', 'item_approval_status', 'discount_updated', 'approval_required', 'order_created', 'order_status_update', 'item_status_update', 'category_assignment'],
     default: 'info' 
   },
   priority: { 

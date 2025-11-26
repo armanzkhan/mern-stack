@@ -1,95 +1,129 @@
-const mongoose = require('mongoose');
-const User = require('../models/User');
-const Manager = require('../models/Manager');
+/*
+  Test script to verify manager profile API endpoint
+  This simulates what happens when the API is called
+*/
+
+require("dotenv").config({ path: require("path").join(__dirname, "..", ".env") });
+const { connect, disconnect } = require("../config/_db");
+const User = require("../models/User");
+const Manager = require("../models/Manager");
+const jwt = require("jsonwebtoken");
+
+const JWT_SECRET = process.env.JWT_SECRET || "supersecretkey";
 
 async function testManagerProfileAPI() {
   try {
-    console.log('🔌 Connecting to MongoDB...');
-    await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/Ressichem');
-    console.log('✅ Connected to MongoDB');
-
-    console.log('\n🔍 Testing manager profile logic...');
-
-    // Find the sales user
-    const salesUser = await User.findOne({ email: 'sales@ressichem.com' });
-    if (!salesUser) {
-      console.log('❌ Sales user not found');
-      return;
+    await connect();
+    
+    const email = "shah@ressichem.com";
+    const companyId = "RESSICHEM";
+    
+    console.log(`🔍 Testing manager profile API for: ${email}\n`);
+    
+    // Find user
+    const user = await User.findOne({ email, company_id: companyId });
+    
+    if (!user) {
+      console.error(`❌ User not found`);
+      process.exit(1);
     }
-
-    console.log('✅ Sales user found:');
-    console.log(`   User ID: ${salesUser.user_id}`);
-    console.log(`   Company ID: ${salesUser.company_id}`);
-    console.log(`   Is Manager: ${salesUser.isManager}`);
-    console.log(`   Manager Profile:`, salesUser.managerProfile);
-
-    // Test the manager profile logic from the controller
-    const userId = salesUser.user_id;
-    const companyId = salesUser.company_id;
-
+    
+    console.log("📋 User Details:");
+    console.log(`   Email: ${user.email}`);
+    console.log(`   User ID: ${user.user_id}`);
+    console.log(`   Company ID: ${user.company_id}`);
+    console.log(`   Is Manager: ${user.isManager}`);
+    console.log(`   Has Manager Profile: ${!!user.managerProfile}`);
+    
+    // Create a test JWT token (simulating login)
+    const tokenPayload = {
+      user_id: user.user_id,
+      _id: user._id,
+      company_id: user.company_id,
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      isSuperAdmin: user.isSuperAdmin || false
+    };
+    
+    const testToken = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: "1h" });
+    console.log(`\n🔑 Generated test token with payload:`, tokenPayload);
+    
+    // Now simulate what the backend controller does
+    console.log(`\n🔍 Simulating getManagerProfile logic...`);
+    const userId = tokenPayload.user_id;
+    const companyIdFromToken = tokenPayload.company_id;
+    
+    console.log(`   Looking up Manager with:`);
+    console.log(`     user_id: ${userId}`);
+    console.log(`     company_id: ${companyIdFromToken}`);
+    
     // First try to find a Manager record
-    let manager = await Manager.findOne({ user_id: userId, company_id: companyId });
-
-    console.log('\n🔍 Manager record lookup:');
+    let manager = await Manager.findOne({ user_id: userId, company_id: companyIdFromToken })
+      .populate('assignedCategories.assignedBy', 'firstName lastName email');
+    
+    console.log(`\n📋 Manager lookup result:`);
+    console.log(`   Found: ${!!manager}`);
     if (manager) {
-      console.log('✅ Manager record found');
       console.log(`   Manager ID: ${manager._id}`);
-      console.log(`   Assigned Categories: ${manager.assignedCategories.length}`);
-    } else {
-      console.log('❌ No Manager record found, checking User.managerProfile...');
-      
-      if (!salesUser.isManager || !salesUser.managerProfile) {
-        console.log('❌ User is not a manager or has no manager profile');
-        return;
-      }
-
-      console.log('✅ User has manager profile, creating manager object...');
-      
-      // Create a manager object from user's managerProfile
-      manager = {
-        _id: salesUser.managerProfile.manager_id || salesUser._id,
-        user_id: salesUser.user_id,
-        assignedCategories: salesUser.managerProfile.assignedCategories.map(category => ({
-          category,
-          assignedBy: salesUser._id,
-          assignedAt: new Date(),
-          isActive: true
-        })),
-        managerLevel: salesUser.managerProfile.managerLevel || 'junior',
-        notificationPreferences: salesUser.managerProfile.notificationPreferences || {
-          orderUpdates: true,
-          stockAlerts: true,
-          statusChanges: true,
-          newOrders: true,
-          lowStock: true,
-          categoryReports: true
-        },
-        permissions: salesUser.managerProfile.permissions || [],
-        performance: salesUser.managerProfile.performance || {
-          totalOrdersManaged: 0,
-          totalProductsManaged: 0,
-          averageResponseTime: 0,
-          lastActiveAt: new Date()
-        }
-      };
+      console.log(`   User ID: ${manager.user_id}`);
+      console.log(`   Company ID: ${manager.company_id}`);
+      console.log(`   Categories: ${manager.assignedCategories.filter(c => c.isActive).map(c => c.category).join(', ')}`);
     }
-
-    console.log('\n🎯 Final manager object:');
-    console.log(`   Manager ID: ${manager._id}`);
-    console.log(`   User ID: ${manager.user_id}`);
-    console.log(`   Manager Level: ${manager.managerLevel}`);
-    console.log(`   Assigned Categories: ${manager.assignedCategories.length}`);
-    console.log(`   Categories: ${manager.assignedCategories.map(c => c.category).join(', ')}`);
-
-    console.log('\n✅ Manager profile logic test successful!');
-    console.log('   The API should now work correctly for the sales user.');
-
-  } catch (error) {
-    console.error('❌ Error:', error);
+    
+    // If no Manager record found, check User's managerProfile
+    if (!manager) {
+      console.log(`\n⚠️  Manager record not found, checking User's managerProfile...`);
+      const userFromDB = await User.findOne({ user_id: userId, company_id: companyIdFromToken });
+      
+      console.log(`   User found: ${!!userFromDB}`);
+      console.log(`   Is Manager: ${userFromDB?.isManager}`);
+      console.log(`   Has Manager Profile: ${!!userFromDB?.managerProfile}`);
+      
+      if (!userFromDB || !userFromDB.isManager || !userFromDB.managerProfile) {
+        console.error(`\n❌ FAILED: Manager profile not found - User check failed`);
+        console.error(`   User exists: ${!!userFromDB}`);
+        console.error(`   Is Manager: ${userFromDB?.isManager}`);
+        console.error(`   Has Manager Profile: ${!!userFromDB?.managerProfile}`);
+        process.exit(1);
+      }
+      
+      // Try to find Manager record by the manager_id stored in user.managerProfile
+      if (userFromDB.managerProfile.manager_id) {
+        const managerByProfileId = await Manager.findById(userFromDB.managerProfile.manager_id);
+        if (managerByProfileId) {
+          console.log(`   ✅ Found Manager record by managerProfile.manager_id`);
+          manager = managerByProfileId;
+        }
+      }
+    }
+    
+    if (manager) {
+      console.log(`\n✅ SUCCESS: Manager profile found!`);
+      console.log(`   Manager ID: ${manager._id}`);
+      console.log(`   User ID: ${manager.user_id}`);
+      console.log(`   Company ID: ${manager.company_id}`);
+    } else {
+      console.error(`\n❌ FAILED: No manager profile found`);
+      process.exit(1);
+    }
+    
+    console.log(`\n🎉 Test complete!`);
+    
+  } catch (err) {
+    console.error("❌ Error:", err.message);
+    console.error(err.stack);
+    process.exit(1);
   } finally {
-    await mongoose.disconnect();
-    console.log('\n🔌 Disconnected from MongoDB');
+    await disconnect();
   }
 }
 
-testManagerProfileAPI();
+if (require.main === module) {
+  testManagerProfileAPI().catch(err => {
+    console.error("❌ Unhandled error:", err);
+    process.exit(1);
+  });
+}
+
+module.exports = { testManagerProfileAPI };

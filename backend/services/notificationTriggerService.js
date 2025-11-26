@@ -197,16 +197,24 @@ class NotificationTriggerService {
    */
   async triggerOrderCreated(orderData, createdBy) {
     try {
+      // Construct proper sender name
+      const senderName = createdBy.firstName && createdBy.lastName
+        ? `${createdBy.firstName} ${createdBy.lastName}`
+        : createdBy.name || createdBy.email || 'Unknown User';
+      
+      // Use email in message if we have it, otherwise use name
+      const creatorDisplay = createdBy.email || senderName;
+      
       const notification = await this.createNotification({
         title: 'New Order Created',
-        message: `A new order #${orderData.orderNumber} has been created by ${createdBy.name || createdBy.email}`,
+        message: `A new order #${orderData.orderNumber} has been created by ${creatorDisplay}`,
         type: 'order',
         priority: 'high',
         targetType: 'company',
         targetIds: [orderData.company_id],
         company_id: orderData.company_id,
-        sender_id: createdBy._id,
-        sender_name: createdBy.name || createdBy.email,
+        sender_id: createdBy._id && createdBy._id !== 'system' ? createdBy._id : null,
+        sender_name: senderName,
         data: {
           entityType: 'order',
           entityId: orderData._id,

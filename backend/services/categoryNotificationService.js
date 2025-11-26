@@ -8,6 +8,37 @@ const mobilePushService = require('./mobilePushService');
 class CategoryNotificationService {
   
   /**
+   * Normalize category name for comparison
+   * Handles variations like "and" vs "&", case differences, extra spaces, etc.
+   */
+  normalizeCategoryName(category) {
+    if (!category || typeof category !== 'string') return '';
+    return category
+      .toLowerCase()
+      .trim()
+      .replace(/\s+/g, ' ') // Normalize multiple spaces to single space
+      .replace(/\s*&\s*/g, ' and ') // Replace & with " and "
+      .replace(/\s+and\s+/g, ' and ') // Normalize "and" spacing
+      .trim();
+  }
+  
+  /**
+   * Check if two category names match (handles variations)
+   */
+  categoriesMatch(category1, category2) {
+    const norm1 = this.normalizeCategoryName(category1);
+    const norm2 = this.normalizeCategoryName(category2);
+    
+    // Exact match after normalization
+    if (norm1 === norm2) return true;
+    
+    // Check if one contains the other (for partial matches)
+    if (norm1.includes(norm2) || norm2.includes(norm1)) return true;
+    
+    return false;
+  }
+  
+  /**
    * Send notification to managers based on product categories
    */
   async sendCategoryNotification(notificationData) {
@@ -127,22 +158,43 @@ class CategoryNotificationService {
       console.log(`📊 Found ${managers.length} managers in company`);
 
       // Filter managers who have access to at least one of the specified categories
-      const relevantManagers = managers.filter(manager => {
-        if (!manager.managerProfile || !manager.managerProfile.assignedCategories) {
-          console.log(`⚠️ Manager ${manager.email} has no assigned categories`);
-          return false;
+      const Manager = require('../models/Manager');
+      const relevantManagers = [];
+      
+      for (const manager of managers) {
+        let managerCategories = [];
+        let hasMatchingCategory = false;
+        
+        // Check User.managerProfile.assignedCategories first
+        if (manager.managerProfile && manager.managerProfile.assignedCategories) {
+          managerCategories = manager.managerProfile.assignedCategories.map(c => 
+            typeof c === 'string' ? c : (c.category || c)
+          );
+          hasMatchingCategory = categories.some(category => 
+            managerCategories.some(managerCat => this.categoriesMatch(managerCat, category))
+          );
         }
-
-        const managerCategories = manager.managerProfile.assignedCategories;
-        console.log(`🔍 Manager ${manager.email} categories:`, managerCategories);
         
-        const hasMatchingCategory = categories.some(category => 
-          managerCategories.includes(category)
-        );
+        // If not found in User.managerProfile, check Manager record
+        if (!hasMatchingCategory && manager.user_id) {
+          const managerRecord = await Manager.findOne({ user_id: manager.user_id, company_id });
+          if (managerRecord && managerRecord.assignedCategories) {
+            managerCategories = managerRecord.assignedCategories.map(c => 
+              typeof c === 'string' ? c : (c.category || c)
+            );
+            hasMatchingCategory = categories.some(category => 
+              managerCategories.some(managerCat => this.categoriesMatch(managerCat, category))
+            );
+          }
+        }
         
-        console.log(`✅ Manager ${manager.email} has matching category: ${hasMatchingCategory}`);
-        return hasMatchingCategory;
-      });
+        if (!hasMatchingCategory) {
+          console.log(`⚠️ Manager ${manager.email} has no matching categories. Manager categories: ${managerCategories.join(', ') || 'None'}`);
+        } else {
+          console.log(`✅ Manager ${manager.email} has matching category. Manager categories: ${managerCategories.join(', ')}`);
+          relevantManagers.push(manager);
+        }
+      }
 
       console.log(`📋 Found ${relevantManagers.length} relevant managers`);
       return relevantManagers;
@@ -280,6 +332,11 @@ class CategoryNotificationService {
         return;
       }
 
+      // Construct proper sender name
+      const senderName = updatedBy.firstName && updatedBy.lastName
+        ? `${updatedBy.firstName} ${updatedBy.lastName}`
+        : updatedBy.name || updatedBy.email || 'System';
+      
       const notificationData = {
         title: `Order ${updateType}`,
         message: `Order #${order.orderNumber} has been ${updateType.toLowerCase()}`,
@@ -287,8 +344,10 @@ class CategoryNotificationService {
         type: 'order',
         priority: updateType === 'created' ? 'high' : 'medium',
         company_id: order.company_id,
-        sender_id: updatedBy.id || updatedBy._id,
-        sender_name: updatedBy.email || updatedBy.name || 'System',
+        sender_id: (updatedBy.id || updatedBy._id) && (updatedBy.id !== 'system' && updatedBy._id !== 'system') 
+          ? (updatedBy.id || updatedBy._id) 
+          : null,
+        sender_name: senderName,
         data: {
           orderId: order._id,
           orderNumber: order.orderNumber,

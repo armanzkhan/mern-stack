@@ -67,8 +67,19 @@ exports.getAllCustomerLedgers = async (req, res) => {
     
     let customerId = null;
     
+    // Check if user is a customer (from JWT or database)
+    let isCustomer = req.user?.isCustomer === true;
+    if (!isCustomer && req.user?.user_id) {
+      const User = require('../models/User');
+      const fullUser = await User.findOne({ 
+        user_id: req.user.user_id, 
+        company_id: companyId 
+      }).select('isCustomer');
+      isCustomer = fullUser?.isCustomer === true;
+    }
+    
     // If user is a customer, filter by their customer record
-    if (req.user && req.user.isCustomer) {
+    if (isCustomer) {
       const Customer = require('../models/Customer');
       const currentUser = await require('../models/User').findById(req.user._id).select('email');
       
@@ -219,8 +230,19 @@ exports.getAgingAnalysis = async (req, res) => {
     
     let customerId = null;
     
+    // Check if user is a customer (from JWT or database)
+    let isCustomer = req.user?.isCustomer === true;
+    if (!isCustomer && req.user?.user_id) {
+      const User = require('../models/User');
+      const fullUser = await User.findOne({ 
+        user_id: req.user.user_id, 
+        company_id: companyId 
+      }).select('isCustomer');
+      isCustomer = fullUser?.isCustomer === true;
+    }
+    
     // If user is a customer, filter by their customer record
-    if (req.user && req.user.isCustomer) {
+    if (isCustomer) {
       const Customer = require('../models/Customer');
       const currentUser = await require('../models/User').findById(req.user._id).select('email');
       
@@ -309,8 +331,19 @@ exports.getCustomerLedgerSummary = async (req, res) => {
     
     let customerId = null;
     
+    // Check if user is a customer (from JWT or database)
+    let isCustomer = req.user?.isCustomer === true;
+    if (!isCustomer && req.user?.user_id) {
+      const User = require('../models/User');
+      const fullUser = await User.findOne({ 
+        user_id: req.user.user_id, 
+        company_id: companyId 
+      }).select('isCustomer');
+      isCustomer = fullUser?.isCustomer === true;
+    }
+    
     // If user is a customer, filter by their customer record
-    if (req.user && req.user.isCustomer) {
+    if (isCustomer) {
       const Customer = require('../models/Customer');
       const currentUser = await require('../models/User').findById(req.user._id).select('email');
       

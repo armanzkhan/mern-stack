@@ -10,6 +10,37 @@ const realtimeService = require('./realtimeService');
 class ItemApprovalService {
   
   /**
+   * Normalize category name for comparison
+   * Handles variations like "and" vs "&", case differences, extra spaces, etc.
+   */
+  normalizeCategoryName(category) {
+    if (!category || typeof category !== 'string') return '';
+    return category
+      .toLowerCase()
+      .trim()
+      .replace(/\s+/g, ' ') // Normalize multiple spaces to single space
+      .replace(/\s*&\s*/g, ' and ') // Replace & with " and "
+      .replace(/\s+and\s+/g, ' and ') // Normalize "and" spacing
+      .trim();
+  }
+  
+  /**
+   * Check if two category names match (handles variations)
+   */
+  categoriesMatch(category1, category2) {
+    const norm1 = this.normalizeCategoryName(category1);
+    const norm2 = this.normalizeCategoryName(category2);
+    
+    // Exact match after normalization
+    if (norm1 === norm2) return true;
+    
+    // Check if one contains the other (for partial matches)
+    if (norm1.includes(norm2) || norm2.includes(norm1)) return true;
+    
+    return false;
+  }
+  
+  /**
    * Create approval entries for each item in an order
    * Routes items to their respective category managers
    */
@@ -46,11 +77,13 @@ class ItemApprovalService {
           continue;
         }
         
-        // Find managers assigned to this category
-        const managers = await this.getManagersForCategory(category, order.company_id);
+        // Find managers assigned to this category AND to the customer
+        console.log(`🔍 Looking for managers for item ${i}: category="${category}", customer="${order.customer}"`);
+        const managers = await this.getManagersForCategory(category, order.company_id, order.customer);
+        console.log(`👥 Found ${managers.length} manager(s) for item ${i} (category: ${category})`);
         
         if (managers.length === 0) {
-          console.warn(`⚠️ No managers found for category ${category}, auto-approving item`);
+          console.warn(`⚠️ No managers found for category "${category}" and customer "${order.customer}", auto-approving item ${i}`);
           // Auto-approve if no manager is assigned
           itemApprovals.push({
             orderId: order._id,
@@ -64,11 +97,10 @@ class ItemApprovalService {
             originalAmount: item.total,
             company_id: order.company_id
           });
-        } else {
-          // Assign to ONLY the first manager for this category (not all managers)
-          // This ensures each item goes to only one manager
+        } else if (managers.length === 1) {
+          // Only one manager - assign to them
           const assignedManager = managers[0];
-          console.log(`📋 Assigning item ${i} (${category}) to manager: ${assignedManager.email}`);
+          console.log(`📋 Assigning item ${i} (${category}) to manager: ${assignedManager.email} (User._id: ${assignedManager._id}, user_id: ${assignedManager.user_id})`);
           
           itemApprovals.push({
             orderId: order._id,
@@ -80,6 +112,25 @@ class ItemApprovalService {
             originalAmount: item.total,
             company_id: order.company_id
           });
+        } else {
+          // Multiple managers have this category - assign to ALL of them
+          // This ensures all relevant managers can see and approve the order
+          console.log(`📋 Multiple managers (${managers.length}) found for category "${category}" - assigning to ALL managers`);
+          
+          for (const manager of managers) {
+            console.log(`   - Assigning to manager: ${manager.email} (User._id: ${manager._id}, user_id: ${manager.user_id})`);
+            
+            itemApprovals.push({
+              orderId: order._id,
+              itemIndex: i,
+              product: item.product,
+              category: category,
+              assignedManager: manager._id,
+              status: 'pending',
+              originalAmount: item.total,
+              company_id: order.company_id
+            });
+          }
         }
       }
       
@@ -90,6 +141,14 @@ class ItemApprovalService {
         
         // Send notifications to managers
         await this.notifyManagers(itemApprovals);
+        
+        // Check if all items are auto-approved (no pending approvals)
+        // If so, update order status immediately
+        const hasPendingApprovals = itemApprovals.some(a => a.status === 'pending');
+        if (!hasPendingApprovals) {
+          console.log(`📋 All items auto-approved, checking order completion...`);
+          await this.checkOrderCompletion(order._id);
+        }
       }
       
       return itemApprovals;
@@ -101,17 +160,152 @@ class ItemApprovalService {
   
   /**
    * Get managers assigned to a specific category
+   * If customerId is provided, only returns managers assigned to that customer
    */
-  async getManagersForCategory(category, companyId) {
+  async getManagersForCategory(category, companyId, customerId = null) {
     try {
-      const managers = await User.find({
+      console.log(`🔍 getManagersForCategory called: category="${category}", companyId="${companyId}", customerId="${customerId}"`);
+      
+      // First, get all managers
+      let managers = await User.find({
         company_id: companyId,
         isManager: true,
-        isActive: true,
-        'managerProfile.assignedCategories': category
+        isActive: true
       });
       
-      console.log(`👥 Found ${managers.length} managers for category ${category}`);
+      // Filter managers who have this category - check both User.managerProfile and Manager record
+      const Manager = require('../models/Manager');
+      const managersWithCategory = [];
+      
+      for (const manager of managers) {
+        let hasCategory = false;
+        let categories = [];
+        
+        // Check User.managerProfile.assignedCategories
+        if (manager.managerProfile && manager.managerProfile.assignedCategories) {
+          categories = manager.managerProfile.assignedCategories;
+          hasCategory = categories.some(cat => {
+            const catStr = typeof cat === 'string' ? cat : (cat.category || cat);
+            return this.categoriesMatch(catStr, category);
+          });
+        }
+        
+        // If not found in User.managerProfile, check Manager record
+        if (!hasCategory && manager.user_id) {
+          const managerRecord = await Manager.findOne({ user_id: manager.user_id, company_id: companyId });
+          if (managerRecord && managerRecord.assignedCategories) {
+            categories = managerRecord.assignedCategories.map(cat => typeof cat === 'string' ? cat : cat.category);
+            hasCategory = categories.some(cat => {
+              const catStr = typeof cat === 'string' ? cat : (cat.category || cat);
+              return this.categoriesMatch(catStr, category);
+            });
+          }
+        }
+        
+        if (hasCategory) {
+          managersWithCategory.push(manager);
+        } else {
+          console.log(`⚠️ Manager ${manager.email} does not have category "${category}". Checked categories:`, categories);
+        }
+      }
+      
+      managers = managersWithCategory;
+      
+      console.log(`👥 Found ${managers.length} managers with category "${category}"`);
+      managers.forEach(m => console.log(`   - ${m.email} (user_id: ${m.user_id})`));
+      
+      // If customerId is provided, filter to:
+      // 1. Managers assigned to this customer (if customer has assigned managers)
+      // 2. OR all managers with the category (if customer has no assigned managers)
+      if (customerId) {
+        const Manager = require('../models/Manager');
+        const customer = await Customer.findById(customerId);
+        
+        if (!customer) {
+          console.warn(`⚠️ Customer not found: ${customerId}`);
+          return [];
+        }
+        
+        console.log(`👤 Customer: ${customer.companyName} (${customer.email})`);
+        
+        // Get manager IDs assigned to this customer
+        const assignedManagerIds = new Set();
+        
+        // Check legacy assignedManager
+        if (customer.assignedManager?.manager_id) {
+          console.log(`   Checking assignedManager.manager_id: ${customer.assignedManager.manager_id}`);
+          const manager = await Manager.findById(customer.assignedManager.manager_id);
+          if (manager && manager.user_id) {
+            assignedManagerIds.add(manager.user_id);
+            console.log(`   ✅ Found manager via assignedManager: ${manager.user_id}`);
+          } else {
+            console.log(`   ⚠️ Manager record not found for assignedManager.manager_id: ${customer.assignedManager.manager_id}`);
+          }
+        }
+        
+        // Check assignedManagers array
+        if (customer.assignedManagers && Array.isArray(customer.assignedManagers)) {
+          console.log(`   Checking assignedManagers array (${customer.assignedManagers.length} entries)`);
+          for (const am of customer.assignedManagers) {
+            if (am.manager_id && am.isActive !== false) {
+              console.log(`   Checking assignedManagers entry: manager_id=${am.manager_id}, isActive=${am.isActive}`);
+              const manager = await Manager.findById(am.manager_id);
+              if (manager && manager.user_id) {
+                assignedManagerIds.add(manager.user_id);
+                console.log(`   ✅ Found manager via assignedManagers: ${manager.user_id}`);
+              } else {
+                console.log(`   ⚠️ Manager record not found for assignedManagers.manager_id: ${am.manager_id}`);
+              }
+            }
+          }
+        }
+        
+        console.log(`👥 Customer has ${assignedManagerIds.size} assigned manager(s) (user_ids):`, Array.from(assignedManagerIds));
+        
+        if (assignedManagerIds.size > 0) {
+          // Customer has assigned managers - only assign to those managers (if they have the category)
+          const beforeCount = managers.length;
+          managers = managers.filter(manager => {
+            const isAssigned = assignedManagerIds.has(manager.user_id);
+            if (!isAssigned) {
+              console.log(`   ⚠️ Manager ${manager.email} (user_id: ${manager.user_id}) is not assigned to customer`);
+            } else {
+              console.log(`   ✅ Manager ${manager.email} (user_id: ${manager.user_id}) IS assigned to customer AND has category`);
+            }
+            return isAssigned;
+          });
+          console.log(`✅ Filtered from ${beforeCount} to ${managers.length} manager(s) assigned to customer and category ${category}`);
+          
+          // If no managers found after filtering, it means assigned managers don't have this category
+          // In this case, we should still assign to ALL managers with the category (fallback)
+          if (managers.length === 0) {
+            console.log(`⚠️ No assigned managers have category "${category}" - falling back to ALL managers with this category`);
+            // Re-fetch all managers with this category (before customer filtering)
+            managers = await User.find({
+              company_id: companyId,
+              isManager: true,
+              isActive: true
+            });
+            managers = managers.filter(manager => {
+              if (!manager.managerProfile || !manager.managerProfile.assignedCategories) {
+                return false;
+              }
+              const categories = manager.managerProfile.assignedCategories;
+              return categories.some(cat => {
+                const catStr = typeof cat === 'string' ? cat : (cat.category || cat);
+                return this.categoriesMatch(catStr, category);
+              });
+            });
+            console.log(`✅ Fallback: Found ${managers.length} manager(s) with category "${category}" (not filtered by customer)`);
+          }
+        } else {
+          // Customer has NO assigned managers - assign to ALL managers with this category
+          // This allows category-only managers to receive orders
+          console.log(`✅ Customer has no assigned managers - assigning to all ${managers.length} manager(s) with category ${category}`);
+        }
+      }
+      
+      console.log(`✅ Returning ${managers.length} manager(s) for category "${category}"`);
       return managers;
     } catch (error) {
       console.error('❌ Error getting managers for category:', error);
@@ -189,7 +383,42 @@ class ItemApprovalService {
     try {
       console.log(`🔍 Getting all approvals for manager ${managerId} in company ${companyId}`);
       
-      const approvals = await OrderItemApproval.find({
+      // Get manager's assigned categories to ensure proper filtering
+      const User = require('../models/User');
+      const Manager = require('../models/Manager');
+      
+      let assignedCategories = [];
+      
+      // managerId is User._id, so first get the User to find their user_id
+      const user = await User.findById(managerId);
+      if (!user) {
+        console.log(`⚠️ User not found for managerId: ${managerId}`);
+        return [];
+      }
+      
+      // Try to find Manager record using user_id
+      let manager = await Manager.findOne({ user_id: user.user_id, company_id: companyId });
+      
+      if (manager) {
+        // Get categories from Manager record
+        assignedCategories = manager.assignedCategories?.map(cat => {
+          return typeof cat === 'string' ? cat : (cat.category || cat);
+        }) || [];
+      } else if (user.managerProfile && user.managerProfile.assignedCategories) {
+        // Fallback to User's managerProfile
+        assignedCategories = user.managerProfile.assignedCategories.map(cat => {
+          return typeof cat === 'string' ? cat : (cat.category || cat);
+        });
+      }
+      
+      console.log(`🔍 Manager assigned categories (${assignedCategories.length}):`, assignedCategories);
+      
+      // Category is the PRIMARY filter - managers see ALL orders in their assigned categories
+      // Customer assignment is informational only and doesn't restrict visibility
+      
+      // First get all approvals assigned to this manager
+      console.log(`🔍 Querying OrderItemApproval for managerId: ${managerId}, companyId: ${companyId}`);
+      let approvals = await OrderItemApproval.find({
         assignedManager: managerId,
         company_id: companyId
       })
@@ -204,7 +433,58 @@ class ItemApprovalService {
       .populate('product', 'name description price category')
       .sort({ createdAt: -1 });
       
-      console.log(`✅ Found ${approvals.length} total approvals`);
+      console.log(`📋 Found ${approvals.length} approvals assigned to manager ${managerId} (before category filtering)`);
+      
+      // Log details of each approval found
+      if (approvals.length > 0) {
+        console.log(`📋 Approval details:`);
+        approvals.forEach((approval, idx) => {
+          console.log(`   [${idx}] Approval ID: ${approval._id}`);
+          console.log(`       Category: ${approval.category}`);
+          console.log(`       Order: ${approval.orderId?.orderNumber || 'N/A'}`);
+          console.log(`       Customer: ${approval.orderId?.customer?.email || 'N/A'}`);
+          console.log(`       Status: ${approval.status}`);
+          console.log(`       AssignedManager: ${approval.assignedManager}`);
+        });
+      } else {
+        console.log(`⚠️ No approvals found with assignedManager=${managerId} and company_id=${companyId}`);
+        // Let's also check if there are any approvals at all for this company
+        const allApprovals = await OrderItemApproval.find({ company_id: companyId }).limit(5);
+        console.log(`📊 Total approvals in company: ${await OrderItemApproval.countDocuments({ company_id: companyId })}`);
+        if (allApprovals.length > 0) {
+          console.log(`📊 Sample approvals (first 5):`);
+          allApprovals.forEach(approval => {
+            console.log(`   - Approval ID: ${approval._id}, assignedManager: ${approval.assignedManager}, category: ${approval.category}`);
+          });
+        }
+      }
+      
+      // Additional security: Filter by manager's assigned categories
+      // This ensures managers only see approvals for categories they're assigned to
+      approvals = approvals.filter(approval => {
+        // Check category match
+        let categoryMatches = true;
+        if (assignedCategories.length > 0) {
+          const approvalCategory = approval.category || '';
+          categoryMatches = assignedCategories.some(assignedCat => {
+            const assignedCatStr = typeof assignedCat === 'string' ? assignedCat : (assignedCat.category || assignedCat);
+            return this.categoriesMatch(assignedCatStr, approvalCategory);
+          });
+          if (!categoryMatches) {
+            console.log(`⚠️ Filtering out approval ${approval._id} - category "${approvalCategory}" not in manager's assigned categories`);
+          }
+        }
+        
+        // Category is the PRIMARY filter - managers see ALL orders in their assigned categories
+        // Customer assignment is informational only - it doesn't restrict visibility
+        // If manager has categories, they see ALL orders with items in those categories (from ANY customer)
+        // This includes orders from their assigned customers AND orders from other customers
+        
+        // No customer filtering needed - category match is sufficient
+        return categoryMatches;
+      });
+      
+      console.log(`✅ Found ${approvals.length} total approvals (after category filtering)`);
       
       // Transform the data to match frontend expectations
       const transformedApprovals = approvals.map(approval => {
@@ -277,7 +557,41 @@ class ItemApprovalService {
     try {
       console.log(`🔍 Getting pending approvals for manager ${managerId} in company ${companyId}`);
       
-      const approvals = await OrderItemApproval.find({
+      // Get manager's assigned categories to ensure proper filtering
+      const User = require('../models/User');
+      const Manager = require('../models/Manager');
+      
+      let assignedCategories = [];
+      
+      // managerId is User._id, so first get the User to find their user_id
+      const user = await User.findById(managerId);
+      if (!user) {
+        console.log(`⚠️ User not found for managerId: ${managerId}`);
+        return [];
+      }
+      
+      // Try to find Manager record using user_id
+      let manager = await Manager.findOne({ user_id: user.user_id, company_id: companyId });
+      
+      if (manager) {
+        // Get categories from Manager record
+        assignedCategories = manager.assignedCategories?.map(cat => {
+          return typeof cat === 'string' ? cat : (cat.category || cat);
+        }) || [];
+      } else if (user.managerProfile && user.managerProfile.assignedCategories) {
+        // Fallback to User's managerProfile
+        assignedCategories = user.managerProfile.assignedCategories.map(cat => {
+          return typeof cat === 'string' ? cat : (cat.category || cat);
+        });
+      }
+      
+      console.log(`🔍 Manager assigned categories (${assignedCategories.length}):`, assignedCategories);
+      
+      // Category is the PRIMARY filter - managers see ALL orders in their assigned categories
+      // Customer assignment is informational only and doesn't restrict visibility
+      
+      // First get all pending approvals assigned to this manager
+      let approvals = await OrderItemApproval.find({
         assignedManager: managerId,
         status: 'pending',
         company_id: companyId
@@ -293,7 +607,34 @@ class ItemApprovalService {
       .populate('product', 'name description price category')
       .sort({ createdAt: -1 });
       
-      console.log(`✅ Found ${approvals.length} pending approvals`);
+      // Additional security: Filter by manager's assigned categories AND assigned customers
+      // This ensures managers only see approvals for:
+      // 1. Categories they're assigned to
+      // 2. Customers they're assigned to
+      approvals = approvals.filter(approval => {
+        // Check category match
+        let categoryMatches = true;
+        if (assignedCategories.length > 0) {
+          const approvalCategory = approval.category || '';
+          categoryMatches = assignedCategories.some(assignedCat => {
+            const assignedCatStr = typeof assignedCat === 'string' ? assignedCat : (assignedCat.category || assignedCat);
+            return this.categoriesMatch(assignedCatStr, approvalCategory);
+          });
+          if (!categoryMatches) {
+            console.log(`⚠️ Filtering out pending approval ${approval._id} - category "${approvalCategory}" not in manager's assigned categories`);
+          }
+        }
+        
+        // Category is the PRIMARY filter - managers see ALL orders in their assigned categories
+        // Customer assignment is informational only - it doesn't restrict visibility
+        // If manager has categories, they see ALL orders with items in those categories (from ANY customer)
+        // This includes orders from their assigned customers AND orders from other customers
+        
+        // No customer filtering needed - category match is sufficient
+        return categoryMatches;
+      });
+      
+      console.log(`✅ Found ${approvals.length} pending approvals (after category filtering)`);
       
       // Transform the data to match frontend expectations
       const transformedApprovals = approvals.map(approval => {
@@ -417,6 +758,31 @@ class ItemApprovalService {
               console.log(`✅ Customer notified about order status change to processing`);
             } catch (notificationError) {
               console.error('⚠️ Failed to send order status notification (non-critical):', notificationError);
+              // Don't throw here as this is not critical
+            }
+          }
+        }
+      }
+      
+      // If item is rejected, update order status to rejected immediately
+      if (action === 'rejected') {
+        const order = await Order.findById(approval.orderId).populate('customer');
+        if (order) {
+          // Set order status to rejected when any item is rejected
+          if (order.status !== 'completed' && order.status !== 'cancelled') {
+            const previousStatus = order.status;
+            order.status = 'rejected';
+            order.approvalStatus = 'rejected';
+            order.rejectedAt = new Date();
+            await order.save();
+            console.log(`✅ Order ${order.orderNumber} status updated to rejected after item rejection (was: ${previousStatus})`);
+            
+            // Send notification to customer about order rejection
+            try {
+              await this.notifyCustomerAboutOrderStatus(order, previousStatus);
+              console.log(`✅ Customer notified about order rejection`);
+            } catch (notificationError) {
+              console.error('⚠️ Failed to send order rejection notification (non-critical):', notificationError);
               // Don't throw here as this is not critical
             }
           }
