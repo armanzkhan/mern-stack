@@ -1191,9 +1191,22 @@ exports.getAllManagers = async (req, res) => {
 
     // Add Manager records
     for (const manager of managerRecords) {
+      // Skip Manager records for customers
+      // Check 1: user_id starts with "customer_"
+      if (manager.user_id && manager.user_id.startsWith('customer_')) {
+        console.log(`  ⏭️ Skipping Manager ${manager._id} - user_id starts with "customer_"`);
+        continue;
+      }
+
       // Get user details for this manager
       const user = await User.findOne({ user_id: manager.user_id, company_id: companyId })
-        .select('firstName lastName email');
+        .select('firstName lastName email isCustomer customerProfile');
+      
+      // Check 2: User is a customer
+      if (user && (user.isCustomer === true || user.customerProfile?.customer_id)) {
+        console.log(`  ⏭️ Skipping Manager ${manager._id} - user ${user.email} is a customer`);
+        continue;
+      }
       
       allManagers.push({
         _id: manager._id,
