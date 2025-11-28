@@ -1167,7 +1167,7 @@ exports.getAllManagers = async (req, res) => {
     // Include all users with isManager: true, even if they don't have assignedCategories yet
     // Also include users with userType === 'manager' or role === 'Manager' to catch newly created managers
     // Also check if they have a Manager record (more inclusive)
-    // EXCLUDE customers (isCustomer: true) to prevent customers from showing as managers
+    // EXCLUDE customers - multiple checks to ensure customers don't appear as managers
     const userManagers = await User.find({ 
       company_id: companyId, 
       $or: [
@@ -1177,8 +1177,9 @@ exports.getAllManagers = async (req, res) => {
         { 'managerProfile.manager_id': { $exists: true, $ne: null } } // Has managerProfile with actual manager_id (not null)
       ],
       isActive: { $ne: false }, // Include active users and users where isActive is not set (defaults to true)
-      isCustomer: { $ne: true } // Exclude customers - they should not appear as managers
-    }).select('user_id email firstName lastName managerProfile isActive createdAt userType role isManager isCustomer');
+      isCustomer: { $ne: true }, // Exclude customers - they should not appear as managers
+      'customerProfile.customer_id': { $exists: false } // Exclude users with customerProfile (they are customers)
+    }).select('user_id email firstName lastName managerProfile isActive createdAt userType role isManager isCustomer customerProfile');
     
     console.log(`🔍 Found ${userManagers.length} users with manager role`);
     userManagers.forEach(user => {
@@ -1217,6 +1218,12 @@ exports.getAllManagers = async (req, res) => {
 
     // Add User manager profiles (include all managers, even without assignedCategories)
     userManagers.forEach(user => {
+      // Safety check: Skip customers even if they somehow passed the query
+      if (user.isCustomer === true || user.customerProfile?.customer_id) {
+        console.log(`  ⏭️ Skipping ${user.email} - is a customer (safety check)`);
+        return;
+      }
+      
       // Check if this user is already in allManagers (from Manager collection)
       const alreadyAdded = allManagers.some(m => m.user_id === user.user_id);
       
