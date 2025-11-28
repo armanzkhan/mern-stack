@@ -236,7 +236,11 @@ exports.createUser = async (req, res) => {
       } catch (managerError) {
         console.error("❌ Error creating manager record:", managerError);
         console.error("❌ Error stack:", managerError.stack);
+        console.error("❌ User email:", user.email);
+        console.error("❌ User ID:", user.user_id);
+        console.error("❌ Company ID:", user.company_id);
         // Don't fail user creation if manager creation fails, but log it
+        // This allows the user to be created, and the Manager record can be created later via fix script
       }
     }
     

@@ -312,15 +312,31 @@ exports.deleteCustomer = async (req, res) => {
     }
     
     // Delete corresponding User record
+    // Try multiple methods to find the user (in case references are broken)
     try {
-      const user = await User.findOne({ 
+      let user = null;
+      
+      // Method 1: Find by customerProfile.customer_id (primary method)
+      user = await User.findOne({ 
         'customerProfile.customer_id': customer._id,
         company_id: companyId 
       });
       
+      // Method 2: If not found, try by email (fallback for broken references)
+      if (!user && customer.email) {
+        user = await User.findOne({ 
+          email: customer.email,
+          company_id: companyId,
+          isCustomer: true
+        });
+        console.log('⚠️ Found user by email (customer_id reference may be broken):', customer.email);
+      }
+      
       if (user) {
         await User.findByIdAndDelete(user._id);
         console.log('✅ Deleted user record for customer:', user.email);
+      } else {
+        console.log('⚠️ No user record found for customer:', customer.email);
       }
     } catch (userError) {
       console.error('⚠️ Failed to delete user for customer:', userError.message);
