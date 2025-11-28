@@ -1178,7 +1178,8 @@ exports.getAllManagers = async (req, res) => {
       ],
       isActive: { $ne: false }, // Include active users and users where isActive is not set (defaults to true)
       isCustomer: { $ne: true }, // Exclude customers - they should not appear as managers
-      'customerProfile.customer_id': { $exists: false } // Exclude users with customerProfile (they are customers)
+      'customerProfile.customer_id': { $exists: false }, // Exclude users with customerProfile (they are customers)
+      user_id: { $not: { $regex: /^customer_/ } } // Exclude users with user_id starting with "customer_" (definitive customer identifier)
     }).select('user_id email firstName lastName managerProfile isActive createdAt userType role isManager isCustomer customerProfile');
     
     console.log(`🔍 Found ${userManagers.length} users with manager role`);
@@ -1231,9 +1232,21 @@ exports.getAllManagers = async (req, res) => {
 
     // Add User manager profiles (include all managers, even without assignedCategories)
     userManagers.forEach(user => {
-      // Safety check: Skip customers even if they somehow passed the query
-      if (user.isCustomer === true || user.customerProfile?.customer_id) {
+      // Safety check 1: Skip if user_id starts with "customer_" (definitive customer identifier)
+      if (user.user_id && user.user_id.startsWith('customer_')) {
+        console.log(`  ⏭️ Skipping ${user.email} - user_id starts with "customer_" (safety check)`);
+        return;
+      }
+      
+      // Safety check 2: Skip customers even if they somehow passed the query
+      if (user.isCustomer === true || user.customerProfile) {
         console.log(`  ⏭️ Skipping ${user.email} - is a customer (safety check)`);
+        return;
+      }
+      
+      // Safety check 3: Skip if role is "customer"
+      if (user.role && user.role.toLowerCase() === 'customer') {
+        console.log(`  ⏭️ Skipping ${user.email} - role is "customer" (safety check)`);
         return;
       }
       
