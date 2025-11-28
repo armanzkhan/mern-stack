@@ -6,10 +6,19 @@ function permissionMiddleware(requiredPermissions = []) {
     console.log("🔑 Permission check:", {
       required: requiredPermissions,
       userPerms: req.user.permissions,
-      isSuperAdmin: req.user.isSuperAdmin
+      isSuperAdmin: req.user.isSuperAdmin,
+      isCompanyAdmin: req.user.isCompanyAdmin
     });
 
+    // Super Admin and Company Admin bypass permission checks
     if (req.user.isSuperAdmin) return next();
+    
+    // Company Admins should have access to most admin functions
+    // Allow them to assign categories (common admin task)
+    if (req.user.isCompanyAdmin && requiredPermissions.includes('assign_categories')) {
+      console.log("✅ Company Admin granted access to assign_categories");
+      return next();
+    }
 
     const headerCompany = req.headers["x-company-id"];
     if (headerCompany && headerCompany !== req.user.company_id) {
