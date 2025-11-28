@@ -1167,16 +1167,18 @@ exports.getAllManagers = async (req, res) => {
     // Include all users with isManager: true, even if they don't have assignedCategories yet
     // Also include users with userType === 'manager' or role === 'Manager' to catch newly created managers
     // Also check if they have a Manager record (more inclusive)
+    // EXCLUDE customers (isCustomer: true) to prevent customers from showing as managers
     const userManagers = await User.find({ 
       company_id: companyId, 
       $or: [
         { isManager: true },
         { userType: 'manager' },
         { role: 'Manager' },
-        { 'managerProfile.manager_id': { $exists: true } } // Has managerProfile with manager_id
+        { 'managerProfile.manager_id': { $exists: true, $ne: null } } // Has managerProfile with actual manager_id (not null)
       ],
-      isActive: { $ne: false } // Include active users and users where isActive is not set (defaults to true)
-    }).select('user_id email firstName lastName managerProfile isActive createdAt userType role isManager');
+      isActive: { $ne: false }, // Include active users and users where isActive is not set (defaults to true)
+      isCustomer: { $ne: true } // Exclude customers - they should not appear as managers
+    }).select('user_id email firstName lastName managerProfile isActive createdAt userType role isManager isCustomer');
     
     console.log(`🔍 Found ${userManagers.length} users with manager role`);
     userManagers.forEach(user => {
