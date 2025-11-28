@@ -1320,10 +1320,29 @@ exports.assignCategories = async (req, res) => {
       return res.status(404).json({ message: "Manager not found" });
     }
 
+    // Get the user's MongoDB ObjectId for assignedBy
+    // req.user._id is the MongoDB ObjectId from the JWT token
+    let assignedByUserId = req.user._id;
+    
+    if (!assignedByUserId) {
+      // Fallback: try to find user by user_id if _id is not available
+      const User = require('../models/User');
+      const currentUser = await User.findOne({ 
+        user_id: req.user.user_id, 
+        company_id: companyId 
+      }).select('_id');
+      
+      if (!currentUser) {
+        return res.status(400).json({ message: "Unable to identify current user" });
+      }
+      
+      assignedByUserId = currentUser._id;
+    }
+
     // Update assigned categories
     manager.assignedCategories = categories.map(category => ({
       category,
-      assignedBy: req.user.id,
+      assignedBy: assignedByUserId,
       assignedAt: new Date(),
       isActive: true
     }));
@@ -1339,7 +1358,7 @@ exports.assignCategories = async (req, res) => {
         user_id: manager.user_id,
         company_id: companyId,
         category,
-        assignedBy: req.user.id,
+        assignedBy: assignedByUserId,
         isActive: true,
         isPrimary: true
       });
