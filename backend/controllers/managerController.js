@@ -1154,7 +1154,11 @@ exports.getAllManagers = async (req, res) => {
     const companyId = req.user?.company_id || req.headers['x-company-id'] || "RESSICHEM";
 
     // Get managers from Manager collection
-    const managerRecords = await Manager.find({ company_id: companyId, isActive: true })
+    // Include all managers, not just isActive: true, to catch all managers
+    const managerRecords = await Manager.find({ 
+      company_id: companyId,
+      isActive: { $ne: false } // Include active and undefined (defaults to true)
+    })
       .populate('assignedCategories.assignedBy', 'firstName lastName email')
       .populate('createdBy', 'firstName lastName email')
       .sort({ createdAt: -1 });
@@ -1162,15 +1166,17 @@ exports.getAllManagers = async (req, res) => {
     // Get managers from User collection (embedded managerProfile)
     // Include all users with isManager: true, even if they don't have assignedCategories yet
     // Also include users with userType === 'manager' or role === 'Manager' to catch newly created managers
+    // Also check if they have a Manager record (more inclusive)
     const userManagers = await User.find({ 
       company_id: companyId, 
       $or: [
         { isManager: true },
         { userType: 'manager' },
-        { role: 'Manager' }
+        { role: 'Manager' },
+        { 'managerProfile.manager_id': { $exists: true } } // Has managerProfile with manager_id
       ],
       isActive: { $ne: false } // Include active users and users where isActive is not set (defaults to true)
-    }).select('user_id email firstName lastName managerProfile isActive createdAt userType role');
+    }).select('user_id email firstName lastName managerProfile isActive createdAt userType role isManager');
     
     console.log(`🔍 Found ${userManagers.length} users with manager role`);
     userManagers.forEach(user => {
