@@ -232,6 +232,14 @@ router.post(
   }
 );
 
+// Get user by ID
+router.get(
+  "/:id",
+  auth,
+  permissionMiddleware(["read_user"], { allowCompanyAdmin: true }),
+  userController.getUser
+);
+
 // Update user
 router.put(
   "/:id",
