@@ -453,6 +453,13 @@ exports.getManagerOrders = async (req, res) => {
     console.log(`✅ Found ${approvalOrderIds.length} orders via item approvals`);
     if (approvalOrderIds.length > 0) {
       console.log(`   Order IDs from approvals: ${approvalOrderIds.map(id => id.toString()).join(', ')}`);
+      // Check if the specific order is in the list
+      const targetOrder = await Order.findOne({ orderNumber: 'ORD-1764390780068-4zfr6nbvv' }).select('_id');
+      if (targetOrder) {
+        const targetOrderIdStr = targetOrder._id.toString();
+        const isInApprovals = approvalOrderIds.some(id => id.toString() === targetOrderIdStr);
+        console.log(`   Looking for order ORD-1764390780068-4zfr6nbvv (ID: ${targetOrderIdStr}) in approvals: ${isInApprovals ? '✅ FOUND' : '❌ NOT FOUND'}`);
+      }
     }
 
     // FALLBACK METHOD: If no approvals found, use category matching with normalization
@@ -534,9 +541,24 @@ exports.getManagerOrders = async (req, res) => {
       .skip((page - 1) * limit);
     
     console.log(`📦 Found ${orders.length} orders from database query`);
+    console.log(`📦 Looking for order ORD-1764390780068-4zfr6nbvv in results...`);
     orders.forEach(order => {
       console.log(`   - Order: ${order.orderNumber} (${order._id})`);
       console.log(`     Items: ${order.items.length}`);
+      if (order.orderNumber === 'ORD-1764390780068-4zfr6nbvv') {
+        console.log(`     ✅ FOUND THE MISSING ORDER!`);
+        console.log(`     Categories: ${JSON.stringify(order.categories)}`);
+        console.log(`     Items details:`);
+        order.items.forEach((item, idx) => {
+          const product = item.product;
+          if (product) {
+            const cat = product.category?.mainCategory || product.category;
+            console.log(`       Item ${idx}: ${product.name} - Category: ${typeof cat === 'string' ? cat : JSON.stringify(cat)}`);
+          } else {
+            console.log(`       Item ${idx}: NO PRODUCT (product is null/undefined)`);
+          }
+        });
+      }
       order.items.forEach((item, idx) => {
         const product = item.product;
         if (product) {
@@ -576,6 +598,17 @@ exports.getManagerOrders = async (req, res) => {
       const hasApprovalsForThisOrder = approvalOrderIds.some(oid => 
         oid.toString() === order._id.toString()
       );
+
+      // Also check if the order's high-level categories include any of the manager's categories
+      // This helps when product.category doesn't perfectly match the manager category names
+      const normalizedOrderCategories = (order.categories || []).map(cat => normalizeCategory(cat));
+      const hasManagerCategoryInOrder = normalizedOrderCategories.some(orderCat => 
+        normalizedCategoryMatches.some(managerCat => 
+          orderCat === managerCat ||
+          orderCat.includes(managerCat) ||
+          managerCat.includes(orderCat)
+        )
+      );
       
       const filteredItems = order.items.filter(item => {
         if (!item.product) return false;
@@ -601,18 +634,34 @@ exports.getManagerOrders = async (req, res) => {
         return matches;
       });
 
-      // If order has approvals but no items match after filtering, still show the order
-      // but use all items (the approval system is the source of truth)
-      if (filteredItems.length === 0 && hasApprovalsForThisOrder) {
-        console.log(`⚠️ Order ${order.orderNumber} has approvals but no items match after filtering - showing all items anyway`);
-        // Use all items since this order was assigned via approvals
+      // If order has approvals OR the order categories clearly include this manager's categories
+      // but no items match after strict filtering, still show the order with all items.
+      // This avoids edge cases where product.category naming differs from high-level categories.
+      if (filteredItems.length === 0 && (hasApprovalsForThisOrder || hasManagerCategoryInOrder)) {
+        console.log(`⚠️ Order ${order.orderNumber} has approvals or matching categories but no items match after filtering - showing all items anyway`);
+        console.log(`   hasApprovalsForThisOrder: ${hasApprovalsForThisOrder}, hasManagerCategoryInOrder: ${hasManagerCategoryInOrder}`);
+        console.log(`   Order has ${order.items.length} items total`);
+        // Use all items since this order is clearly relevant for this manager
         const allItems = order.items.filter(item => item.product); // Just filter out items without products
+        console.log(`   After filtering items with products: ${allItems.length} items`);
         if (allItems.length > 0) {
           // Recalculate with all items
           const filteredSubtotal = allItems.reduce((sum, item) => sum + (item.unitPrice * item.quantity), 0);
           const originalTaxRate = order.subtotal > 0 ? (order.tax / order.subtotal) : 0.05;
           const filteredTax = filteredSubtotal * originalTaxRate;
           const filteredTotal = filteredSubtotal + filteredTax;
+          
+          // Use order categories that match manager's categories (normalized)
+          const matchingOrderCategories = (order.categories || []).filter(orderCat => {
+            const normalizedOrderCat = normalizeCategory(orderCat);
+            return normalizedCategoryMatches.some(managerCat => 
+              normalizedOrderCat === managerCat ||
+              normalizedOrderCat.includes(managerCat) ||
+              managerCat.includes(normalizedOrderCat)
+            );
+          });
+          
+          console.log(`   Returning order with ${allItems.length} items and categories: ${matchingOrderCategories.join(', ')}`);
           
           return {
             ...order.toObject(),
@@ -623,12 +672,14 @@ exports.getManagerOrders = async (req, res) => {
             total: filteredTotal,
             totalDiscount: order.totalDiscount || 0,
             finalTotal: order.finalTotal || filteredTotal,
-            categories: order.categories || [],
+            categories: matchingOrderCategories.length > 0 ? matchingOrderCategories : (order.categories || []),
             originalItemCount: order.items.length,
             filteredItemCount: allItems.length,
             originalTotal: order.total,
             originalFinalTotal: order.finalTotal || order.total
           };
+        } else {
+          console.log(`   ⚠️ Order ${order.orderNumber} has no items with products - this shouldn't happen`);
         }
       }
 
@@ -684,27 +735,47 @@ exports.getManagerOrders = async (req, res) => {
         }
       });
 
-      // Extract unique categories from filtered items only (only manager's categories)
+      // Extract unique categories for this order that are relevant to the manager
+      // 1) Prefer using the order.categories array (high-level categories shown in UI)
       const filteredCategories = new Set();
-      filteredItems.forEach(item => {
-        if (item.product?.category) {
-          const cat = item.product.category.mainCategory || item.product.category;
-          if (cat) {
-            // Only add categories that match manager's assigned categories
-            const matchesManagerCategory = categoryMatches.some(categoryMatch => {
-              if (typeof cat === 'string') {
-                return cat === categoryMatch || 
-                       cat.includes(categoryMatch) || 
-                       categoryMatch.includes(cat);
-              }
-              return false;
-            });
-            if (matchesManagerCategory) {
-              filteredCategories.add(cat);
-            }
-          }
+      (order.categories || []).forEach(catStr => {
+        if (typeof catStr !== 'string') return;
+        const normalizedOrderCat = normalizeCategory(catStr);
+        const matches = normalizedCategoryMatches.some(managerCat => {
+          return (
+            normalizedOrderCat === managerCat ||
+            normalizedOrderCat.includes(managerCat) ||
+            managerCat.includes(normalizedOrderCat)
+          );
+        });
+        if (matches) {
+          filteredCategories.add(catStr);
         }
       });
+
+      // 2) Fallback: if nothing found from order.categories, derive from filtered items
+      if (filteredCategories.size === 0) {
+        filteredItems.forEach(item => {
+          if (item.product?.category) {
+            const cat = item.product.category.mainCategory || item.product.category;
+            if (cat) {
+              const matchesManagerCategory = categoryMatches.some(categoryMatch => {
+                if (typeof cat === 'string') {
+                  return (
+                    cat === categoryMatch ||
+                    cat.includes(categoryMatch) ||
+                    categoryMatch.includes(cat)
+                  );
+                }
+                return false;
+              });
+              if (matchesManagerCategory) {
+                filteredCategories.add(cat);
+              }
+            }
+          }
+        });
+      }
       
       console.log(`📦 Order ${order.orderNumber}: ${order.items.length} items → ${filteredItems.length} filtered items`);
       console.log(`   Original categories: ${order.categories?.join(', ') || 'none'}`);
