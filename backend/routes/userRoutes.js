@@ -236,7 +236,7 @@ router.post(
 router.get(
   "/:id",
   auth,
-  permissionMiddleware(["read_user"], { allowCompanyAdmin: true }),
+  permissionMiddleware(["users.read"]),
   userController.getUser
 );
 
