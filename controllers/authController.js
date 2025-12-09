@@ -77,14 +77,39 @@ async function login(req, res) {
     if (!validPassword)
       return res.status(401).json({ success: false, message: "Invalid credentials" });
 
+    // Validate required fields for token generation
+    if (!user.user_id) {
+      console.error("❌ User missing user_id:", user.email);
+      return res.status(500).json({ success: false, message: "User data incomplete: missing user_id" });
+    }
+    if (!user.company_id) {
+      console.error("❌ User missing company_id:", user.email);
+      return res.status(500).json({ success: false, message: "User data incomplete: missing company_id" });
+    }
+
     // ✅ Check if user is super admin
     const isSuperAdmin = user.isSuperAdmin === true || 
                         user.user_id === "super_admin_001" ||
                         user.email === "superadmin@ressichem.com" ||
-                        user.roles.some(r => r.name === "Super Admin");
+                        (user.roles && user.roles.some(r => r && r.name === "Super Admin"));
 
-    const token = await generateToken(user, "15m");
-    const refreshToken = await generateToken(user, "7d", true);
+    console.log("🔑 Generating tokens for user:", {
+      email: user.email,
+      user_id: user.user_id,
+      company_id: user.company_id,
+      isSuperAdmin
+    });
+
+    let token, refreshToken;
+    try {
+      token = await generateToken(user, "15m");
+      refreshToken = await generateToken(user, "7d", true);
+      console.log("✅ Tokens generated successfully");
+    } catch (tokenError) {
+      console.error("❌ Token generation error:", tokenError);
+      console.error("Token error stack:", tokenError.stack);
+      throw tokenError; // Re-throw to be caught by outer catch
+    }
 
     // Determine user type for frontend routing
     let userType = 'user';
@@ -122,7 +147,22 @@ async function login(req, res) {
     });
   } catch (err) {
     console.error("Login error:", err);
-    return res.status(500).json({ success: false, message: "Server error" });
+    console.error("Error stack:", err.stack);
+    console.error("Error details:", {
+      message: err.message,
+      name: err.name,
+      code: err.code
+    });
+    // Always include error message in response for debugging
+    return res.status(500).json({ 
+      success: false, 
+      message: "Server error",
+      error: err.message || "Unknown error",
+      details: process.env.NODE_ENV === 'development' ? {
+        name: err.name,
+        stack: err.stack
+      } : undefined
+    });
   }
 }
 
