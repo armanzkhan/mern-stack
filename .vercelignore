@@ -1,0 +1,6 @@
+# Ignore backup directory with individual function files
+api/_backup/
+
+# Ignore utility files (they're not serverless functions)
+api/_utils/
+

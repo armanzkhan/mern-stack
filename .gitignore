@@ -59,3 +59,30 @@ mongodb-backup/
 # backend/uploads/
 # frontend/public/uploads/
 
+# Test scripts
+test-connection.js
+test-login.js
+test-customer-login.js
+
+# Vercel - ignore individual function files (we use single catch-all)
+api/auth/login.js
+api/auth/register.js
+api/auth/refresh.js
+api/auth/me.js
+api/auth/current-user.js
+api/auth/index.js
+api/users/index.js
+api/companies/index.js
+api/customers/index.js
+api/orders/index.js
+api/products/index.js
+api/roles/index.js
+api/permissions/index.js
+api/permission-groups/index.js
+api/notifications/index.js
+api/managers/index.js
+api/product-categories/index.js
+api/invoices/index.js
+api/customer-ledger/index.js
+api/product-images/index.js
+api/health.js
