@@ -1,11 +1,68 @@
-# dependencies
-/node_modules
+# Dependencies
+node_modules/
+backend/node_modules/
+frontend/node_modules/
+package-lock.json
 
-# environment variables
+# Environment variables
 .env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+backend/.env
+frontend/.env
 
-# test scripts
+# Build outputs
+.next/
+out/
+dist/
+build/
+backend/dist/
+frontend/.next/
+frontend/out/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# IDE
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Testing
+coverage/
+.nyc_output/
+
+# Misc
+.cache/
+.temp/
+.tmp/
+
+# MongoDB backups
+mongodb-backup/
+*.bson
+
+# Uploads (optional - uncomment if you don't want to track uploads)
+# backend/uploads/
+# frontend/public/uploads/
+
+# Test scripts
 test-connection.js
+test-login.js
+test-customer-login.js
 
 # Vercel - ignore individual function files (we use single catch-all)
 api/auth/login.js
