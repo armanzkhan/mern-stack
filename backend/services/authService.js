@@ -46,45 +46,68 @@ async function getUserPermissions(userId, companyId) {
 }
 
 async function generateToken(user, expiresIn = "1h", isRefresh = false) {
-  let roles = [];
-  let permissionGroups = [];
-  let permissions = [];
+  try {
+    // Validate required fields
+    if (!user || !user.user_id || !user.company_id) {
+      throw new Error(`Missing required fields: user_id=${!!user?.user_id}, company_id=${!!user?.company_id}`);
+    }
 
-  // 👇 Automatically detect Super Admin by ID or email
-  const isSuperAdmin =
-    user.isSuperAdmin === true ||
-    user.user_id === "super_admin_001" ||
-    user.email === "superadmin@ressichem.com"; // ✅ update to your actual Super Admin email if you like
+    let roles = [];
+    let permissionGroups = [];
+    let permissions = [];
 
-  if (isSuperAdmin) {
-    const allPermissions = await Permission.find({});
-    permissions = allPermissions.map(p => p.key);
-    roles = ["SuperAdmin"];
-    permissionGroups = ["All"];
-  } else {
-    ({ roles, permissionGroups, permissions } = await getUserPermissions(
-      user.user_id,
-      user.company_id
-    ));
+    // 👇 Automatically detect Super Admin by ID or email
+    const isSuperAdmin =
+      user.isSuperAdmin === true ||
+      user.user_id === "super_admin_001" ||
+      user.email === "superadmin@ressichem.com"; // ✅ update to your actual Super Admin email if you like
+
+    if (isSuperAdmin) {
+      const allPermissions = await Permission.find({});
+      permissions = allPermissions.map(p => p.key);
+      roles = ["SuperAdmin"];
+      permissionGroups = ["All"];
+    } else {
+      try {
+        ({ roles, permissionGroups, permissions } = await getUserPermissions(
+          user.user_id,
+          user.company_id
+        ));
+      } catch (permError) {
+        console.error("❌ Error getting user permissions:", permError);
+        // Use empty arrays as fallback instead of failing
+        roles = [];
+        permissionGroups = [];
+        permissions = [];
+      }
+    }
+
+    const encrypted = encryptObject({ roles, permissionGroups, permissions });
+    const payload = {
+      user_id: user.user_id,
+      _id: user._id, // Include MongoDB ObjectId for database references
+      company_id: user.company_id,
+      email: user.email || '',
+      firstName: user.firstName || '',
+      lastName: user.lastName || '',
+      perms: encrypted,
+      isSuperAdmin,
+      // Include user type flags for role-based filtering
+      isManager: user.isManager === true,
+      isCustomer: user.isCustomer === true,
+      isCompanyAdmin: user.isCompanyAdmin === true,
+    };
+
+    return jwt.sign(payload, isRefresh ? REFRESH_SECRET : JWT_SECRET, { expiresIn });
+  } catch (error) {
+    console.error("❌ generateToken error:", error);
+    console.error("User data:", {
+      user_id: user?.user_id,
+      company_id: user?.company_id,
+      email: user?.email
+    });
+    throw error;
   }
-
-  const encrypted = encryptObject({ roles, permissionGroups, permissions });
-  const payload = {
-    user_id: user.user_id,
-    _id: user._id, // Include MongoDB ObjectId for database references
-    company_id: user.company_id,
-    email: user.email,
-    firstName: user.firstName,
-    lastName: user.lastName,
-    perms: encrypted,
-    isSuperAdmin,
-    // Include user type flags for role-based filtering
-    isManager: user.isManager === true,
-    isCustomer: user.isCustomer === true,
-    isCompanyAdmin: user.isCompanyAdmin === true,
-  };
-
-  return jwt.sign(payload, isRefresh ? REFRESH_SECRET : JWT_SECRET, { expiresIn });
 }
 
 function verifyRefreshToken(token) {

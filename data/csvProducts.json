@@ -1,6 +1,0 @@
-{
-  "note": "This file will contain all products extracted from the CSV",
-  "format": "Each product: { name, unit, sku, price, category }",
-  "products": []
-}
-
