@@ -14,7 +14,6 @@ function getKey() {
     }
     console.warn("⚠️ ENCRYPTION_KEY not set. Using fallback key for development only!");
     // Generate a consistent 32-byte key from a default string
-    const crypto = require("crypto");
     const defaultKey = "ressichem-default-encryption-key-2024";
     return crypto.createHash('sha256').update(defaultKey).digest();
   }
