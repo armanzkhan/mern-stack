@@ -93,7 +93,7 @@ const productData = [
     { name: "Max Flo Integra 3 (Powder)", unit: "KG", sku: 20, price: 13340, category: { mainCategory: "Concrete Admixtures" } },
     { name: "Max Flo Integra 4 (Powder)", unit: "KG", sku: 2, price: 2185, category: { mainCategory: "Concrete Admixtures" } },
     { name: "Max Flo Integra 4 (Powder)", unit: "KG", sku: 20, price: 21160, category: { mainCategory: "Concrete Admixtures" } },
-    { name: "Max Flo CI", unit: "LTR", sku: 1, price: 552, category: { mainCategory: "Concrete Admixtures" } },
+    { name: "Max Flo CI", unit: "LTR", sku: 1, price: 558, category: { mainCategory: "Concrete Admixtures" } },
     { name: "Max Flo CI", unit: "LTR", sku: 5, price: 2588, category: { mainCategory: "Concrete Admixtures" } },
     { name: "Max Flo CI", unit: "LTR", sku: 10, price: 4830, category: { mainCategory: "Concrete Admixtures" } },
     { name: "Max Flo CI", unit: "LTR", sku: 15, price: 6900, category: { mainCategory: "Concrete Admixtures" } },
@@ -118,7 +118,7 @@ const productData = [
     { name: "Max Flo SAL", unit: "LTR", sku: 25, price: 15813, category: { mainCategory: "Concrete Admixtures" } },
     { name: "Max Flo SAL", unit: "LTR", sku: 200, price: 120750, category: { mainCategory: "Concrete Admixtures" } },
     { name: "Max Flo SAP (Powder)", unit: "KG", sku: 2, price: 2990, category: { mainCategory: "Concrete Admixtures" } },
-    { name: "Max Flo SAP (Powder)", unit: "KG", sku: 20, price: 55200, category: { mainCategory: "Concrete Admixtures" } },
+    { name: "Max Flo SAP (Powder)", unit: "KG", sku: 20, price: 28750, category: { mainCategory: "Concrete Admixtures" } },
     { name: "Max Flo P 800 (Powder)", unit: "KG", sku: 2, price: 460, category: { mainCategory: "Concrete Admixtures" } },
     { name: "Max Flo P 800 (Powder)", unit: "KG", sku: 20, price: 3680, category: { mainCategory: "Concrete Admixtures" } },
     { name: "Max Flo SP 900 (Powder)", unit: "KG", sku: 2, price: 828, category: { mainCategory: "Concrete Admixtures" } },
@@ -133,6 +133,7 @@ const productData = [
 
   // ===== EPOXY FLOORINGS & COATINGS =====
   ...[
+    // Epoxy Crack Fillers
     { name: "Ressi EPO Crack Fill", unit: "LTR", sku: 2.16, price: 813, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Epoxy Crack Fillers" } },
     { name: "Ressi EPO Crack Fill", unit: "LTR", sku: 21.6, price: 7500, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Epoxy Crack Fillers" } },
     { name: "Ressi EPO Crack Fill LV", unit: "LTR", sku: 2.18, price: 550, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Epoxy Crack Fillers" } },
@@ -141,57 +142,71 @@ const productData = [
     { name: "Ressi EPO Crack Fill WR", unit: "LTR", sku: 21.8, price: 5450, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Epoxy Crack Fillers" } },
     { name: "Ressi EPO Crack Fill CR", unit: "LTR", sku: 2.15, price: 806, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Epoxy Crack Fillers" } },
     { name: "Ressi EPO Crack Fill CR", unit: "LTR", sku: 21.5, price: 6719, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Epoxy Crack Fillers" } },
+    // Epoxy Primers
+    { name: "Ressi EPO Primer", unit: "LTR", sku: 1.6, price: 3750, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Epoxy Primers" } },
     { name: "Ressi EPO Primer", unit: "LTR", sku: 16, price: 34800, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Epoxy Primers" } },
     { name: "Ressi EPO Primer", unit: "LTR", sku: 48, price: 102500, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Epoxy Primers" } },
-    { name: "Ressi EPO Primer LV", unit: "LTR", sku: 18, price: 33750, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Epoxy Primers" } },
+    { name: "Ressi EPO Primer LV", unit: "LTR", sku: 1.8, price: 3563, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Epoxy Primers" } },
+    { name: "Ressi EPO Primer LV", unit: "LTR", sku: 18, price: 32963, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Epoxy Primers" } },
     { name: "Ressi EPO Primer LV", unit: "LTR", sku: 54, price: 97875, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Epoxy Primers" } },
+    { name: "Ressi EPO Primer WR", unit: "LTR", sku: 1.8, price: 5625, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Epoxy Primers" } },
     { name: "Ressi EPO Primer WR", unit: "LTR", sku: 18, price: 54000, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Epoxy Primers" } },
     { name: "Ressi EPO Primer WR", unit: "LTR", sku: 54, price: 155250, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Epoxy Primers" } },
+    { name: "Ressi EPO Primer CR", unit: "LTR", sku: 1.5, price: 6125, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Epoxy Primers" } },
     { name: "Ressi EPO Primer CR", unit: "LTR", sku: 15, price: 56250, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Epoxy Primers" } },
     { name: "Ressi EPO Primer CR", unit: "LTR", sku: 45, price: 160000, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Epoxy Primers" } },
+    { name: "Ressi EPO Primer WCR", unit: "LTR", sku: 1.8, price: 7875, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Epoxy Primers" } },
     { name: "Ressi EPO Primer WCR", unit: "LTR", sku: 18, price: 73125, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Epoxy Primers" } },
     { name: "Ressi EPO Primer WCR", unit: "LTR", sku: 54, price: 202500, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Epoxy Primers" } },
+    { name: "Ressi EPO Iron Primer", unit: "LTR", sku: 1.16, price: 2356, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Epoxy Primers" } },
     { name: "Ressi EPO Iron Primer", unit: "LTR", sku: 11.6, price: 21750, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Epoxy Primers" } },
     { name: "Ressi EPO Iron Primer", unit: "LTR", sku: 23.2, price: 41250, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Epoxy Primers" } },
-    { name: "Ressi EPO Chem Prime 402", unit: "KG", sku: 0.615, price: 744.68, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Epoxy Primers" } },
-    { name: "Ressi EPO Chem Prime 402", unit: "KG", sku: 1.23, price: 1382.98, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Epoxy Primers" } },
-    { name: "Ressi EPO Chem Prime 402", unit: "KG", sku: 24.6, price: 20281.91, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Epoxy Primers" } },
-    { name: "Ressi EPO Mid Coat S - GP", unit: "KG", sku: 0.625, price: 808.51, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Epoxy Mid Coats" } },
-    { name: "Ressi EPO Mid Coat S - GP", unit: "KG", sku: 1.25, price: 1510.64, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Epoxy Mid Coats" } },
-    { name: "Ressi EPO Mid Coat S - GP", unit: "KG", sku: 25, price: 26170.21, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Epoxy Mid Coats" } },
-    { name: "Ressi EPO Mid Coat F - GP", unit: "KG", sku: 0.6, price: 1010.64, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Epoxy Mid Coats" } },
-    { name: "Ressi EPO Mid Coat F - GP", unit: "KG", sku: 24, price: 23936.17, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Epoxy Mid Coats" } },
+    { name: "Ressi EPO Chem Prime 402", unit: "LTR", sku: 1.5, price: 5000, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Epoxy Primers" } },
+    { name: "Ressi EPO Chem Prime 402", unit: "LTR", sku: 15, price: 48750, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Epoxy Primers" } },
+    { name: "Ressi EPO Chem Prime 402", unit: "LTR", sku: 45, price: 93750, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Epoxy Primers" } },
+    // Epoxy Mid Coats
+    { name: "Ressi EPO Mid Coat S - GP", unit: "LTR", sku: 2.96, price: 2368, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Epoxy Mid Coats" } },
+    { name: "Ressi EPO Mid Coat S - GP", unit: "LTR", sku: 14.8, price: 11285, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Epoxy Mid Coats" } },
+    { name: "Ressi EPO Mid Coat S - GP", unit: "LTR", sku: 29.6, price: 21830, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Epoxy Mid Coats" } },
+    { name: "Ressi EPO Mid Coat S - GP", unit: "LTR", sku: 59.2, price: 41440, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Epoxy Mid Coats" } },
     { name: "Ressi EPO Mid Coat F - GP", unit: "LTR", sku: 2.96, price: 3330, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Epoxy Mid Coats" } },
     { name: "Ressi EPO Mid Coat F - GP", unit: "LTR", sku: 14.8, price: 13320, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Epoxy Mid Coats" } },
     { name: "Ressi EPO Mid Coat F - GP", unit: "LTR", sku: 29.6, price: 24420, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Epoxy Mid Coats" } },
     { name: "Ressi EPO Mid Coat F - GP", unit: "LTR", sku: 59.2, price: 45140, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Epoxy Mid Coats" } },
-    { name: "Ressi EPO Mid Coat S - CR", unit: "KG", sku: 0.15, price: 276.60, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Epoxy Mid Coats" } },
-    { name: "Ressi EPO Mid Coat S - CR", unit: "KG", sku: 0.75, price: 1042.55, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Epoxy Mid Coats" } },
-    { name: "Ressi EPO Mid Coat S - CR", unit: "KG", sku: 1.5, price: 1936.17, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Epoxy Mid Coats" } },
-    { name: "Ressi EPO Mid Coat S - CR", unit: "KG", sku: 15, price: 18255.32, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Epoxy Mid Coats" } },
-    { name: "Ressi EPO Mid Coat S - CR", unit: "KG", sku: 45, price: 54255.32, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Epoxy Mid Coats" } },
-    { name: "Ressi EPO Mid Coat F - CR", unit: "KG", sku: 0.15, price: 319.15, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Epoxy Mid Coats" } },
-    { name: "Ressi EPO Mid Coat F - CR", unit: "KG", sku: 0.75, price: 1143.62, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Epoxy Mid Coats" } },
-    { name: "Ressi EPO Mid Coat F - CR", unit: "KG", sku: 1.5, price: 2180.85, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Epoxy Mid Coats" } },
-    { name: "Ressi EPO Mid Coat F - CR", unit: "KG", sku: 15, price: 20744.68, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Epoxy Mid Coats" } },
-    { name: "Ressi EPO Mid Coat F - CR", unit: "KG", sku: 45, price: 61702.13, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Epoxy Mid Coats" } },
-    { name: "Ressi EPO Tough Might", unit: "LTR", sku: 14, price: 29750, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Two Component Epoxy Top Coats" } },
-    { name: "Ressi EPO Tough Might", unit: "LTR", sku: 28, price: 59500, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Two Component Epoxy Top Coats" } },
+    { name: "Ressi EPO Mid Coat S - CR", unit: "LTR", sku: 2.8, price: 3150, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Epoxy Mid Coats" } },
+    { name: "Ressi EPO Mid Coat S - CR", unit: "LTR", sku: 14, price: 14875, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Epoxy Mid Coats" } },
+    { name: "Ressi EPO Mid Coat S - CR", unit: "LTR", sku: 28, price: 28000, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Epoxy Mid Coats" } },
+    { name: "Ressi EPO Mid Coat S - CR", unit: "LTR", sku: 56, price: 52500, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Epoxy Mid Coats" } },
+    { name: "Ressi EPO Mid Coat F - CR", unit: "LTR", sku: 2.8, price: 3325, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Epoxy Mid Coats" } },
+    { name: "Ressi EPO Mid Coat F - CR", unit: "LTR", sku: 14, price: 15750, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Epoxy Mid Coats" } },
+    { name: "Ressi EPO Mid Coat F - CR", unit: "LTR", sku: 28, price: 29750, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Epoxy Mid Coats" } },
+    { name: "Ressi EPO Mid Coat F - CR", unit: "LTR", sku: 56, price: 56000, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Epoxy Mid Coats" } },
+    // Two Component Epoxy Top Coats
+    { name: "Ressi EPO Tough Might", unit: "LTR", sku: 1.4, price: 3525, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Two Component Epoxy Top Coats" } },
+    { name: "Ressi EPO Tough Might", unit: "LTR", sku: 14, price: 33750, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Two Component Epoxy Top Coats" } },
+    { name: "Ressi EPO Tough Might", unit: "LTR", sku: 28, price: 66150, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Two Component Epoxy Top Coats" } },
+    { name: "Ressi EPO Tough Might Econo", unit: "LTR", sku: 1.6, price: 3063, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Two Component Epoxy Top Coats" } },
     { name: "Ressi EPO Tough Might Econo", unit: "LTR", sku: 16, price: 28300, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Two Component Epoxy Top Coats" } },
     { name: "Ressi EPO Tough Might Econo", unit: "LTR", sku: 32, price: 54000, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Two Component Epoxy Top Coats" } },
+    { name: "Ressi EPO Gloss Might", unit: "LTR", sku: 1.4, price: 3360, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Two Component Epoxy Top Coats" } },
     { name: "Ressi EPO Gloss Might", unit: "LTR", sku: 14, price: 31763, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Two Component Epoxy Top Coats" } },
     { name: "Ressi EPO Gloss Might", unit: "LTR", sku: 28, price: 61600, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Two Component Epoxy Top Coats" } },
+    { name: "Ressi EPO Chem Might", unit: "LTR", sku: 1.5, price: 4688, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Two Component Epoxy Top Coats" } },
     { name: "Ressi EPO Chem Might", unit: "LTR", sku: 15, price: 45000, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Two Component Epoxy Top Coats" } },
     { name: "Ressi EPO Chem Might", unit: "LTR", sku: 30, price: 86250, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Two Component Epoxy Top Coats" } },
+    { name: "Ressi EPO Clear Coat-Floor", unit: "LTR", sku: 1.5, price: 4688, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Two Component Epoxy Top Coats" } },
     { name: "Ressi EPO Clear Coat-Floor", unit: "LTR", sku: 15, price: 45000, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Two Component Epoxy Top Coats" } },
     { name: "Ressi EPO Clear Coat-Floor", unit: "LTR", sku: 30, price: 86250, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Two Component Epoxy Top Coats" } },
+    { name: "Ressi EPO Clear Coat-Walls", unit: "LTR", sku: 1.5, price: 3938, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Two Component Epoxy Top Coats" } },
     { name: "Ressi EPO Clear Coat-Walls", unit: "LTR", sku: 15, price: 37500, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Two Component Epoxy Top Coats" } },
     { name: "Ressi EPO Clear Coat-Walls", unit: "LTR", sku: 30, price: 67500, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Two Component Epoxy Top Coats" } },
+    { name: "Ressi EPO Anti-static", unit: "LTR", sku: 1.5, price: 5375, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Two Component Epoxy Top Coats" } },
     { name: "Ressi EPO Anti-static", unit: "LTR", sku: 15, price: 50625, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Two Component Epoxy Top Coats" } },
     { name: "Ressi EPO Anti-static", unit: "LTR", sku: 30, price: 97500, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Two Component Epoxy Top Coats" } },
+    // Three Component Heavy Duty Epoxy Floorings
     { name: "Ressi EPO FLOOR PLUS Econo", unit: "LTR", sku: 3.2, price: 2963, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Three Component Heavy Duty Epoxy Floorings" } },
     { name: "Ressi EPO FLOOR PLUS Econo", unit: "LTR", sku: 16, price: 14400, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Three Component Heavy Duty Epoxy Floorings" } },
-    { name: "Ressi EPO FLOOR PLUS Econo", unit: "LTR", sku: 32, price: 31250, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Three Component Heavy Duty Epoxy Floorings" } },
+    { name: "Ressi EPO FLOOR PLUS Econo", unit: "LTR", sku: 32, price: 28200, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Three Component Heavy Duty Epoxy Floorings" } },
     { name: "Ressi EPO FLOOR PLUS Econo", unit: "LTR", sku: 64, price: 54400, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Three Component Heavy Duty Epoxy Floorings" } },
     { name: "Ressi EPO FLOOR PLUS", unit: "LTR", sku: 2.8, price: 3325, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Three Component Heavy Duty Epoxy Floorings" } },
     { name: "Ressi EPO FLOOR PLUS", unit: "LTR", sku: 28, price: 31500, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Three Component Heavy Duty Epoxy Floorings" } },
@@ -204,17 +219,22 @@ const productData = [
     { name: "Ressi EPO Chem Plus", unit: "LTR", sku: 13.5, price: 23625, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Three Component Heavy Duty Epoxy Floorings" } },
     { name: "Ressi EPO Chem Plus", unit: "LTR", sku: 27, price: 45563, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Three Component Heavy Duty Epoxy Floorings" } },
     { name: "Ressi EPO Chem Plus", unit: "LTR", sku: 54, price: 87750, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Three Component Heavy Duty Epoxy Floorings" } },
+    // Thin Coat Brush, Roller and Spray Applied
+    { name: "Ressi EPO Roll Coat-Floor", unit: "LTR", sku: 1.4, price: 3875, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Thin Coat Brush, Roller and Spray Applied" } },
     { name: "Ressi EPO Roll Coat-Floor", unit: "LTR", sku: 14, price: 37625, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Thin Coat Brush, Roller and Spray Applied" } },
     { name: "Ressi EPO Roll Coat-Floor", unit: "LTR", sku: 28, price: 73500, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Thin Coat Brush, Roller and Spray Applied" } },
+    { name: "Ressi EPO Roll Coat Plus", unit: "LTR", sku: 1.16, price: 2050, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Thin Coat Brush, Roller and Spray Applied" } },
     { name: "Ressi EPO Roll Coat Plus", unit: "LTR", sku: 11.6, price: 18750, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Thin Coat Brush, Roller and Spray Applied" } },
     { name: "Ressi EPO Roll Coat Plus", unit: "LTR", sku: 23.2, price: 36000, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Thin Coat Brush, Roller and Spray Applied" } },
+    { name: "Ressi EPO Iron Coat", unit: "LTR", sku: 1.16, price: 2350, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Thin Coat Brush, Roller and Spray Applied" } },
     { name: "Ressi EPO Iron Coat", unit: "LTR", sku: 11.6, price: 22000, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Thin Coat Brush, Roller and Spray Applied" } },
     { name: "Ressi EPO Iron Coat", unit: "LTR", sku: 23.2, price: 42500, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Thin Coat Brush, Roller and Spray Applied" } },
+    { name: "Ressi EPO Iron Coat CR", unit: "LTR", sku: 1.16, price: 2625, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Thin Coat Brush, Roller and Spray Applied" } },
     { name: "Ressi EPO Iron Coat CR", unit: "LTR", sku: 11.6, price: 25375, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Thin Coat Brush, Roller and Spray Applied" } },
     { name: "Ressi EPO Iron Coat CR", unit: "LTR", sku: 23.2, price: 49300, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Thin Coat Brush, Roller and Spray Applied" } },
-    { name: "Ressi EPO Chem Coat 406", unit: "KG", sku: 1.5, price: 2531.91, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Thin Coat Brush, Roller and Spray Applied" } },
-    { name: "Ressi EPO Chem Coat 406", unit: "KG", sku: 15, price: 24468.09, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Thin Coat Brush, Roller and Spray Applied" } },
-    { name: "Ressi EPO Chem Coat 406", unit: "KG", sku: 45, price: 72765.96, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Thin Coat Brush, Roller and Spray Applied" } },
+    { name: "Ressi EPO Chem Coat 406", unit: "LTR", sku: 1.5, price: 4875, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Thin Coat Brush, Roller and Spray Applied" } },
+    { name: "Ressi EPO Chem Coat 406", unit: "LTR", sku: 15, price: 47813, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Thin Coat Brush, Roller and Spray Applied" } },
+    { name: "Ressi EPO Chem Coat 406", unit: "LTR", sku: 30, price: 93750, category: { mainCategory: "Epoxy Floorings & Coatings", subCategory: "Thin Coat Brush, Roller and Spray Applied" } },
   ].map(p => ({
     ...p,
     fullName: `${p.name} - ${p.sku} ${p.unit}`,
@@ -225,6 +245,7 @@ const productData = [
   ...[
     { name: "Ressi Anchor Fix", unit: "KG", sku: 3.8, price: 7245, category: { mainCategory: "Specialty Products" } },
     { name: "Ressi Anchor Fix", unit: "KG", sku: 38, price: 70680, category: { mainCategory: "Specialty Products" } },
+    { name: "Ressi EPO Anchor Pro 3:1", unit: "KG", sku: 0.565, price: 2340, category: { mainCategory: "Specialty Products" } },
     { name: "Ressi NSG 710", unit: "KG", sku: 20, price: 2100, category: { mainCategory: "Specialty Products" } },
     { name: "Ressi Kerb Grout 102", unit: "KG", sku: 20, price: 960, category: { mainCategory: "Specialty Products" } },
     { name: "Ressi KerbFix 101", unit: "KG", sku: 20, price: 900, category: { mainCategory: "Specialty Products" } },
@@ -307,11 +328,11 @@ const productData = [
     { name: "Ressi Polymer", unit: "LTR", sku: 30, price: 86250, category: { mainCategory: "Decorative Concrete" } },
     { name: "MT Base Coat", unit: "KG", sku: 20, price: 1610, category: { mainCategory: "Decorative Concrete" } },
     { name: "MT Top Coat", unit: "KG", sku: 20, price: 2300, category: { mainCategory: "Decorative Concrete" } },
-    { name: "MT - Polymer Liquid", unit: "LTR", sku: 1, price: 3335, category: { mainCategory: "Decorative Concrete" } },
-    { name: "MT - Polymer Liquid", unit: "LTR", sku: 5, price: 16100, category: { mainCategory: "Decorative Concrete" } },
-    { name: "MT - Polymer Liquid", unit: "LTR", sku: 10, price: 31050, category: { mainCategory: "Decorative Concrete" } },
-    { name: "MT - Polymer Liquid", unit: "LTR", sku: 15, price: 44850, category: { mainCategory: "Decorative Concrete" } },
-    { name: "MT - Polymer Liquid", unit: "LTR", sku: 25, price: 86250, category: { mainCategory: "Decorative Concrete" } },
+    { name: "MT - Polymer Liquid", unit: "KG", sku: 1, price: 3335, category: { mainCategory: "Decorative Concrete" } },
+    { name: "MT - Polymer Liquid", unit: "KG", sku: 5, price: 16100, category: { mainCategory: "Decorative Concrete" } },
+    { name: "MT - Polymer Liquid", unit: "KG", sku: 10, price: 31050, category: { mainCategory: "Decorative Concrete" } },
+    { name: "MT - Polymer Liquid", unit: "KG", sku: 15, price: 44850, category: { mainCategory: "Decorative Concrete" } },
+    { name: "MT - Polymer Liquid", unit: "KG", sku: 25, price: 86250, category: { mainCategory: "Decorative Concrete" } },
     { name: "Terrazzo Retarder", unit: "LTR", sku: 1, price: 1254, category: { mainCategory: "Decorative Concrete" } },
     { name: "Terrazzo Retarder", unit: "LTR", sku: 5, price: 6153, category: { mainCategory: "Decorative Concrete" } },
     { name: "Terrazzo Retarder", unit: "LTR", sku: 10, price: 12075, category: { mainCategory: "Decorative Concrete" } },
@@ -324,80 +345,145 @@ const productData = [
   })),
 
   // ===== EPOXY ADHESIVES AND COATINGS - ZEPOXY RESINS =====
-  // Note: Many products show "-" for smaller SKUs, only products with prices are included
+  // Only products from user's list (excluding entries with "-" for price)
   ...[
-    // Zepoxy Resins - Bulk pricing available
-    { name: "Zepoxy RER 128", unit: "LTR", sku: 230, price: 201250, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Zepoxy RFR 128 V", unit: "LTR", sku: 200, price: 202400, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Zepoxy HLH 011 X /S", unit: "LTR", sku: 250, price: 194750, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Zepoxy RLH 100", unit: "LTR", sku: 200, price: 289000, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Zepoxy REH 115", unit: "LTR", sku: 200, price: 280000, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Zepoxy REH 147", unit: "LTR", sku: 200, price: 295000, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Zepoxy REH 205", unit: "LTR", sku: 200, price: 285000, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Zepoxy REH 7301", unit: "LTR", sku: 200, price: 275000, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
+    // Zepoxy Electropot
+    { name: "Zepoxy Electropot", unit: "KG", sku: 0.615, price: 1007, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    { name: "Zepoxy Electropot", unit: "KG", sku: 1.23, price: 1651, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    { name: "Zepoxy Electropot", unit: "KG", sku: 24.6, price: 25917, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
     
-    // Zepoxy Products - From the product list images (only products with prices)
-    // Zepoxy Electropot series
-    // NOTE: Removed duplicate entries with price 0 - correct entries with actual prices are listed later (lines 1155+)
+    // Zepoxy Electropot DT-W
+    { name: "Zepoxy Electropot DT-W", unit: "KG", sku: 0.625, price: 914, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    { name: "Zepoxy Electropot DT-W", unit: "KG", sku: 1.25, price: 1707, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    { name: "Zepoxy Electropot DT-W", unit: "KG", sku: 25, price: 29579, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
     
-    // Zepoxy Clear, 300, 350, 400 series
-    // NOTE: Removed duplicate entries with price 0 - correct entries with actual prices are listed later (lines 1166+)
-    { name: "Zepoxy 300", unit: "KG", sku: 24, price: 0, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Zepoxy 350", unit: "KG", sku: 24, price: 0, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Zepoxy 400", unit: "KG", sku: 24, price: 0, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
+    // Zepoxy Electropot Econo
+    { name: "Zepoxy Electropot Econo", unit: "KG", sku: 0.6, price: 1142, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    { name: "Zepoxy Electropot Econo", unit: "KG", sku: 24, price: 27054, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
     
-    // Zepoxy specialty products
-    // Zepoxy Resin Art - removed (should only have SKU 0.75, see line 1174)
-    { name: "Zepoxy Felxicure", unit: "KG", sku: 24, price: 0, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Zepoxy Table Top Deep Pour", unit: "KG", sku: 24, price: 0, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
+    // Zepoxy Electropot Plus (skipping entries with "-" price)
     
-    // Zepoxy 100, 150, 200 series - Note: These have Mini GM, Half GM, Full KG, CP KG units
-    // NOTE: Removed duplicate entries with price 0 - correct entries with actual prices are listed later (lines 1205+)
+    // Zepoxy Clear
+    { name: "Zepoxy Clear", unit: "KG", sku: 0.15, price: 313, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    { name: "Zepoxy Clear", unit: "KG", sku: 0.75, price: 1178, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    { name: "Zepoxy Clear", unit: "KG", sku: 1.5, price: 2188, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    { name: "Zepoxy Clear", unit: "KG", sku: 15, price: 20633, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    { name: "Zepoxy Clear", unit: "KG", sku: 45, price: 61322, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
     
-    // Zepoxy specialty applications
-    { name: "Zepoxy Kara Garh", unit: "GM", sku: 0.75, price: 0, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Zepoxy Wood Master", unit: "GM", sku: 0.75, price: 0, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Zepoxy Clutch Leather", unit: "GM", sku: 0.75, price: 0, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Zepoxy Kara Noor", unit: "GM", sku: 0.75, price: 0, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
+    // Zepoxy Clear AS
+    { name: "Zepoxy Clear AS", unit: "KG", sku: 0.15, price: 312, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    { name: "Zepoxy Clear AS", unit: "KG", sku: 0.75, price: 1200, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    { name: "Zepoxy Clear AS", unit: "KG", sku: 1.5, price: 2220, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    // Skipping 15 KG and 45 KG (price is "-")
     
-    // Zepoxy Steel series
-    { name: "Zepoxy Steel 5 Min", unit: "KG", sku: 2, price: 0, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Zepoxy Steel 90 Min", unit: "KG", sku: 2, price: 0, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
+    // Zepoxy 300
+    { name: "Zepoxy 300", unit: "KG", sku: 0.15, price: 361, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    { name: "Zepoxy 300", unit: "KG", sku: 0.75, price: 1320, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    { name: "Zepoxy 300", unit: "KG", sku: 1.5, price: 2509, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    { name: "Zepoxy 300", unit: "KG", sku: 15, price: 23860, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    { name: "Zepoxy 300", unit: "KG", sku: 45, price: 71004, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
     
-    // Zepoxy premium products
-    // NOTE: Removed duplicate Zepoxy Crystal entry with price 0 - correct entry with actual price is listed later (line 1252)
-    { name: "Zepoxy Ultimate", unit: "KG", sku: 24.6, price: 0, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
+    // Zepoxy 350
+    { name: "Zepoxy 350", unit: "KG", sku: 1.5, price: 2895, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    { name: "Zepoxy 350", unit: "KG", sku: 15, price: 28095, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    { name: "Zepoxy 350", unit: "KG", sku: 45, price: 83454, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
     
-    // Additional Zepoxy products from the detailed list (products without prices marked with 0, can be updated later)
-    { name: "Zepoxy RUR 136", unit: "LTR", sku: 250, price: 0, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Zepoxy RER 810", unit: "LTR", sku: 250, price: 0, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Zepoxy RER 816 Y", unit: "LTR", sku: 230, price: 0, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Zepoxy RER 126", unit: "LTR", sku: 230, price: 0, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Zepoxy RFR AW 106", unit: "LTR", sku: 230, price: 0, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Zepoxy WR 110", unit: "LTR", sku: 50, price: 0, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Zepoxy WR 220", unit: "LTR", sku: 200, price: 0, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Zepoxy REH 140-LVD", unit: "LTR", sku: 200, price: 0, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Zepoxy REH 125", unit: "LTR", sku: 200, price: 0, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Zepoxy REH 148", unit: "LTR", sku: 200, price: 0, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Zepoxy REH 149", unit: "LTR", sku: 200, price: 0, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Zepoxy REH 953 U", unit: "LTR", sku: 200, price: 0, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Zepoxy REH 101", unit: "LTR", sku: 200, price: 0, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Zepoxy REH 206", unit: "LTR", sku: 200, price: 0, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Zepoxy REH 207", unit: "LTR", sku: 200, price: 0, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Zepoxy REH 208", unit: "LTR", sku: 200, price: 0, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Zepoxy RLH 243", unit: "LTR", sku: 180, price: 0, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Zepoxy REH 241", unit: "LTR", sku: 180, price: 0, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Zepoxy REH 541", unit: "LTR", sku: 200, price: 0, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Zepoxy REH 360", unit: "LTR", sku: 200, price: 0, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Zepoxy REH 361", unit: "LTR", sku: 200, price: 0, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Zepoxy REH 347", unit: "LTR", sku: 200, price: 0, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Zepoxy REH 348", unit: "LTR", sku: 200, price: 0, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Zepoxy RLH 7269", unit: "LTR", sku: 180, price: 0, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Zepoxy RLH 5509", unit: "LTR", sku: 200, price: 0, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Zepoxy REH 2958", unit: "LTR", sku: 200, price: 0, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Zepoxy REH 2257", unit: "LTR", sku: 200, price: 0, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Zepoxy WH 230", unit: "LTR", sku: 50, price: 3220, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
-    { name: "Zepoxy WH 230", unit: "LTR", sku: 200, price: 0, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
+    // Zepoxy Resin Art
+    { name: "Zepoxy Resin Art", unit: "KG", sku: 0.75, price: 1279, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    { name: "Zepoxy Resin Art", unit: "KG", sku: 1.5, price: 2343, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    { name: "Zepoxy Resin Art", unit: "KG", sku: 15, price: 21997, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    { name: "Zepoxy Resin Art", unit: "KG", sku: 45, price: 64863, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    
+    // Zepoxy Felxicure
+    { name: "Zepoxy Felxicure", unit: "KG", sku: 1.4, price: 4124, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    
+    // Zepoxy 400
+    { name: "Zepoxy 400", unit: "KG", sku: 1.56, price: 5291, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    
+    // Zepoxy Table Top Deep Pour
+    { name: "Zepoxy Table Top Deep Pour", unit: "KG", sku: 1.5, price: 4377, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    { name: "Zepoxy Table Top Deep Pour", unit: "KG", sku: 15, price: 42805, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    { name: "Zepoxy Table Top Deep Pour", unit: "KG", sku: 45, price: 129017, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    
+    // Zepoxy 100 (Mini GM, Half GM, Full KG, CP KG)
+    { name: "Zepoxy 100", unit: "Mini GM", sku: 0.18, price: 333, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    { name: "Zepoxy 100", unit: "Half GM", sku: 0.9, price: 1389, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    { name: "Zepoxy 100", unit: "Full KG", sku: 1.8, price: 2725, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    { name: "Zepoxy 100", unit: "CP KG", sku: 54, price: 75911, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    { name: "Zepoxy 100", unit: "CP KG", sku: 63, price: 88883, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    
+    // Zepoxy 100 Y
+    { name: "Zepoxy 100 Y", unit: "Mini GM", sku: 0.18, price: 303, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    { name: "Zepoxy 100 Y", unit: "Full KG", sku: 1.8, price: 2465, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    { name: "Zepoxy 100 Y", unit: "CP KG", sku: 54, price: 73954, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    
+    // Zepoxy 100 Plus
+    { name: "Zepoxy 100 Plus", unit: "Mini GM", sku: 0.18, price: 314, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    { name: "Zepoxy 100 Plus", unit: "Half GM", sku: 0.9, price: 1293, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    { name: "Zepoxy 100 Plus", unit: "Full KG", sku: 1.8, price: 2528, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    { name: "Zepoxy 100 Plus", unit: "CP KG", sku: 54, price: 74130, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    { name: "Zepoxy 100 Plus", unit: "CP KG", sku: 63, price: 85693, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    
+    // Zepoxy 100 CL
+    { name: "Zepoxy 100 CL", unit: "Mini GM", sku: 0.18, price: 372, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    { name: "Zepoxy 100 CL", unit: "Half GM", sku: 0.9, price: 1620, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    { name: "Zepoxy 100 CL", unit: "Full KG", sku: 1.8, price: 2760, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    
+    // Zepoxy 150
+    { name: "Zepoxy 150", unit: "Full KG", sku: 1.8, price: 2826, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    { name: "Zepoxy 150", unit: "CP KG", sku: 54, price: 89879, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    
+    // Zepoxy 200
+    { name: "Zepoxy 200", unit: "Full KG", sku: 1.8, price: 4930, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    { name: "Zepoxy 200", unit: "CP KG", sku: 54, price: 137434, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    
+    // Zepoxy Kara Garh
+    { name: "Zepoxy Kara Garh", unit: "Mini GM", sku: 0.18, price: 283, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    { name: "Zepoxy Kara Garh", unit: "Half GM", sku: 0.9, price: 1208, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    { name: "Zepoxy Kara Garh", unit: "Full KG", sku: 1.8, price: 2397, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    { name: "Zepoxy Kara Garh", unit: "CP KG", sku: 54, price: 67409, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    { name: "Zepoxy Kara Garh", unit: "CP KG", sku: 63, price: 77960, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    
+    // Zepoxy Wood Master
+    { name: "Zepoxy Wood Master", unit: "Mini GM", sku: 0.18, price: 283, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    { name: "Zepoxy Wood Master", unit: "Half GM", sku: 0.9, price: 1208, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    { name: "Zepoxy Wood Master", unit: "Full KG", sku: 1.8, price: 2397, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    { name: "Zepoxy Wood Master", unit: "CP KG", sku: 54, price: 67409, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    { name: "Zepoxy Wood Master", unit: "CP KG", sku: 63, price: 77960, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    
+    // Zepoxy Clutch Leather
+    { name: "Zepoxy Clutch Leather", unit: "Mini GM", sku: 0.18, price: 277, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    { name: "Zepoxy Clutch Leather", unit: "Half GM", sku: 0.9, price: 1238, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    { name: "Zepoxy Clutch Leather", unit: "Full KG", sku: 1.8, price: 2459, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    { name: "Zepoxy Clutch Leather", unit: "CP KG", sku: 54, price: 69138, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    { name: "Zepoxy Clutch Leather", unit: "CP KG", sku: 63, price: 79959, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    
+    // Zepoxy Kara Noor
+    { name: "Zepoxy Kara Noor", unit: "Mini GM", sku: 0.15, price: 361, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    { name: "Zepoxy Kara Noor", unit: "Half GM", sku: 0.75, price: 1587, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    { name: "Zepoxy Kara Noor", unit: "Full KG", sku: 1.5, price: 2928, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    { name: "Zepoxy Kara Noor", unit: "CP KG", sku: 15, price: 28376, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    
+    // Zepoxy Steel 5 Min
+    { name: "Zepoxy Steel 5 Min", unit: "STS GM", sku: 0.01, price: 40, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    { name: "Zepoxy Steel 5 Min", unit: "MTS GM", sku: 0.03, price: 121, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    
+    // Zepoxy Steel 90 Min
+    { name: "Zepoxy Steel 90 Min", unit: "STS GM", sku: 0.01, price: 35, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    { name: "Zepoxy Steel 90 Min", unit: "MTS GM", sku: 0.03, price: 99, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    
+    // Zepoxy Crystal
+    { name: "Zepoxy Crystal", unit: "STS GM", sku: 0.01, price: 55, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    { name: "Zepoxy Crystal", unit: "MTS GM", sku: 0.03, price: 176, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    { name: "Zepoxy Crystal", unit: "CP KG", sku: 2, price: 7551, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    { name: "Zepoxy Crystal", unit: "BP KG", sku: 40, price: 154335, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    
+    // Zepoxy Ultimate
+    { name: "Zepoxy Ultimate", unit: "STS GM", sku: 0.01, price: 66, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    { name: "Zepoxy Ultimate", unit: "MTS GM", sku: 0.03, price: 132, category: { mainCategory: "Epoxy Adhesives and Coatings" } },
+    
+    // Zepoxy Products (moved from Building Care and Maintenance)
+    ...require('./zepoxyProductsList').zepoxyProducts,
   ].map(p => ({
     ...p,
     fullName: `${p.name} - ${p.sku} ${p.unit}`,
@@ -405,138 +491,12 @@ const productData = [
   })),
 
   // ===== DRY MIX MORTARS / PREMIX PLASTERS =====
-  ...[
-    // PlastoRend 100 Base Products (without color codes)
-    { name: "Ressi PlastoRend 100", unit: "KG", sku: 1, price: 299, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100", unit: "KG", sku: 12, price: 2990, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    
-    // PlastoRend 100 Series (Pigmented Hardener)
-    { name: "Ressi PlastoRend 100 - 0001 B", unit: "KG", sku: 1, price: 299, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 0001 B", unit: "KG", sku: 12, price: 2990, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 0001", unit: "KG", sku: 1, price: 299, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 0001", unit: "KG", sku: 12, price: 2990, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 0003", unit: "KG", sku: 1, price: 299, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 0003", unit: "KG", sku: 12, price: 2990, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 8400 - 1 HD", unit: "KG", sku: 1, price: 299, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 8400 - 1 HD", unit: "KG", sku: 12, price: 2990, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 1100", unit: "KG", sku: 1, price: 299, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 1100", unit: "KG", sku: 12, price: 2990, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 1101", unit: "KG", sku: 1, price: 299, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 1101", unit: "KG", sku: 12, price: 2990, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 9111 TG", unit: "KG", sku: 1, price: 299, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 9111 TG", unit: "KG", sku: 12, price: 2990, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 6110 TG", unit: "KG", sku: 1, price: 299, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 6110 TG", unit: "KG", sku: 12, price: 2990, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 1111", unit: "KG", sku: 1, price: 299, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 1111", unit: "KG", sku: 12, price: 2990, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 1211-2", unit: "KG", sku: 1, price: 299, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 1211-2", unit: "KG", sku: 12, price: 2990, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 1200", unit: "KG", sku: 1, price: 299, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 1200", unit: "KG", sku: 12, price: 2990, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 1210", unit: "KG", sku: 1, price: 299, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 1210", unit: "KG", sku: 12, price: 2990, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 7000 W", unit: "KG", sku: 1, price: 299, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 7000 W", unit: "KG", sku: 12, price: 2990, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 7000 WL", unit: "KG", sku: 1, price: 299, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 7000 WL", unit: "KG", sku: 12, price: 2990, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 9000 W", unit: "KG", sku: 1, price: 299, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 9000 W", unit: "KG", sku: 12, price: 2990, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - GRG", unit: "KG", sku: 1, price: 299, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - GRG", unit: "KG", sku: 12, price: 2990, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 9210", unit: "KG", sku: 1, price: 299, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 9210", unit: "KG", sku: 12, price: 2990, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 9110 W", unit: "KG", sku: 1, price: 299, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 9110 W", unit: "KG", sku: 12, price: 2990, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - TG", unit: "KG", sku: 1, price: 299, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - TG", unit: "KG", sku: 12, price: 2990, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 9311 HD", unit: "KG", sku: 1, price: 299, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 9311 HD", unit: "KG", sku: 12, price: 2990, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - GOG", unit: "KG", sku: 1, price: 299, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - GOG", unit: "KG", sku: 12, price: 2990, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - NW", unit: "KG", sku: 1, price: 299, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - NW", unit: "KG", sku: 12, price: 2990, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 1211", unit: "KG", sku: 1, price: 299, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 1211", unit: "KG", sku: 12, price: 2990, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - CHG", unit: "KG", sku: 1, price: 299, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - CHG", unit: "KG", sku: 12, price: 2990, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 3990 X 9", unit: "KG", sku: 1, price: 299, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 3990 X 9", unit: "KG", sku: 12, price: 2990, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 6800", unit: "KG", sku: 1, price: 299, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 6800", unit: "KG", sku: 12, price: 2990, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 6400", unit: "KG", sku: 1, price: 299, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 6400", unit: "KG", sku: 12, price: 2990, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 3400", unit: "KG", sku: 1, price: 299, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 3400", unit: "KG", sku: 12, price: 2990, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 8820 X 2 HD", unit: "KG", sku: 1, price: 299, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 8820 X 2 HD", unit: "KG", sku: 12, price: 2990, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 1320", unit: "KG", sku: 1, price: 299, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 1320", unit: "KG", sku: 12, price: 2875, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 1220", unit: "KG", sku: 1, price: 299, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 1220", unit: "KG", sku: 12, price: 2990, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - CHW", unit: "KG", sku: 1, price: 299, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - CHW", unit: "KG", sku: 12, price: 2990, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 8810 X 1", unit: "KG", sku: 1, price: 299, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 8810 X 1", unit: "KG", sku: 12, price: 2990, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 8500 HD", unit: "KG", sku: 1, price: 299, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 8500 HD", unit: "KG", sku: 12, price: 2990, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 5211", unit: "KG", sku: 1, price: 299, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 5211", unit: "KG", sku: 12, price: 2990, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 5210", unit: "KG", sku: 1, price: 299, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 5210", unit: "KG", sku: 12, price: 2990, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    
-    // PlastoRend 100 - 50 KG Color Variants (from user list: "100 - 0001 B" format)
-    { name: "Ressi PlastoRend 100 - 0001 B", unit: "KG", sku: 50, price: 6325, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 0001", unit: "KG", sku: 50, price: 5175, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } }, // Fixed: was 6325, should be 5175
-    { name: "Ressi PlastoRend 100 - 0003", unit: "KG", sku: 50, price: 4600, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 8400 - 1 HD", unit: "KG", sku: 50, price: 5175, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 1100", unit: "KG", sku: 50, price: 5175, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 1101", unit: "KG", sku: 50, price: 5175, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 9111 TG", unit: "KG", sku: 50, price: 5175, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 6110 TG", unit: "KG", sku: 50, price: 5175, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 1111", unit: "KG", sku: 50, price: 5175, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 1211-2", unit: "KG", sku: 50, price: 5175, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 1200", unit: "KG", sku: 50, price: 5175, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 1210", unit: "KG", sku: 50, price: 5175, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 7000 W", unit: "KG", sku: 50, price: 5175, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 7000 WL", unit: "KG", sku: 50, price: 5175, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 9000 W", unit: "KG", sku: 50, price: 5175, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - GRG", unit: "KG", sku: 50, price: 5175, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 9210", unit: "KG", sku: 50, price: 5175, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 9110 W", unit: "KG", sku: 50, price: 5175, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - TG", unit: "KG", sku: 50, price: 5175, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 9311 HD", unit: "KG", sku: 50, price: 5175, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - GOG", unit: "KG", sku: 50, price: 5175, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - NW", unit: "KG", sku: 50, price: 5175, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 1211", unit: "KG", sku: 50, price: 5175, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - CHG", unit: "KG", sku: 50, price: 5175, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 3990 X 9", unit: "KG", sku: 50, price: 9200, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 6800", unit: "KG", sku: 50, price: 9200, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 6400", unit: "KG", sku: 50, price: 5175, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 3400", unit: "KG", sku: 50, price: 5175, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 8820 X 2 HD", unit: "KG", sku: 50, price: 5175, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 1320", unit: "KG", sku: 50, price: 5405, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 1220", unit: "KG", sku: 50, price: 5175, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - CHW", unit: "KG", sku: 50, price: 5175, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 8810 X 1", unit: "KG", sku: 50, price: 5175, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 8500 HD", unit: "KG", sku: 50, price: 5175, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 5211", unit: "KG", sku: 50, price: 5175, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-    { name: "Ressi PlastoRend 100 - 5210", unit: "KG", sku: 50, price: 5520, category: { mainCategory: "Dry Mix Mortars / Premix Plasters", subCategory: "PlastoRend 100" } },
-  ].map(p => ({
-    ...p,
-    fullName: `${p.name} - ${p.sku} ${p.unit}`,
-    company_id: "RESSICHEM"
-  })),
+  // Only products from user's filtered list
+  ...require('./dryMixProductsList').dryMixProducts,
 
   // ===== TILING AND GROUTING MATERIALS =====
-  ...[
-    // Ressi TG 810 Series
-    { name: "Ressi TG 810 - 0001", unit: "KG", sku: 1, price: 161, category: { mainCategory: "Tiling and Grouting Materials", subCategory: "TG 810" } },
-    { name: "Ressi TG 810 - 0001", unit: "KG", sku: 15, price: 2243, category: { mainCategory: "Tiling and Grouting Materials", subCategory: "TG 810" } },
-    { name: "Ressi TG 810 - 1110", unit: "KG", sku: 1, price: 161, category: { mainCategory: "Tiling and Grouting Materials", subCategory: "TG 810" } },
-    { name: "Ressi TG 810 - 1110", unit: "KG", sku: 15, price: 2243, category: { mainCategory: "Tiling and Grouting Materials", subCategory: "TG 810" } },
-    { name: "Ressi TG 810 - 8111", unit: "KG", sku: 1, price: 161, category: { mainCategory: "Tiling and Grouting Materials", subCategory: "TG 810" } },
-    { name: "Ressi TG 810 - 8111", unit: "KG", sku: 15, price: 2243, category: { mainCategory: "Tiling and Grouting Materials", subCategory: "TG 810" } },
-    { name: "Ressi TG 810 - 1211", unit: "KG", sku: 1, price: 161, category: { mainCategory: "Tiling and Grouting Materials", subCategory: "TG 810" } },
+  // Only products from user's filtered list
+  ...require('./tilingGroutingProductsList').tilingGroutingProducts,
     { name: "Ressi TG 810 - 1211", unit: "KG", sku: 15, price: 2243, category: { mainCategory: "Tiling and Grouting Materials", subCategory: "TG 810" } },
     { name: "Ressi TG 810 - 1421", unit: "KG", sku: 1, price: 161, category: { mainCategory: "Tiling and Grouting Materials", subCategory: "TG 810" } },
     { name: "Ressi TG 810 - 1421", unit: "KG", sku: 15, price: 2243, category: { mainCategory: "Tiling and Grouting Materials", subCategory: "TG 810" } },
@@ -750,15 +710,6 @@ const productData = [
     { name: "Ressi TA 0001 B", unit: "KG", sku: 15, price: 2243, category: { mainCategory: "Tiling and Grouting Materials", subCategory: "Tile Adhesives" } },
     { name: "Ressi TA QS - 1", unit: "KG", sku: 1, price: 161, category: { mainCategory: "Tiling and Grouting Materials", subCategory: "Tile Adhesives" } },
     { name: "Ressi TA QS - 1", unit: "KG", sku: 15, price: 2243, category: { mainCategory: "Tiling and Grouting Materials", subCategory: "Tile Adhesives" } },
-    { name: "Ressi ETA SF-1", unit: "KG", sku: 1, price: 161, category: { mainCategory: "Tiling and Grouting Materials", subCategory: "Tile Adhesives" } },
-    { name: "Ressi ETA SF-1", unit: "KG", sku: 15, price: 2243, category: { mainCategory: "Tiling and Grouting Materials", subCategory: "Tile Adhesives" } },
-    { name: "Ressi ETA", unit: "KG", sku: 1, price: 161, category: { mainCategory: "Tiling and Grouting Materials", subCategory: "Tile Adhesives" } },
-    { name: "Ressi ETA", unit: "KG", sku: 15, price: 2243, category: { mainCategory: "Tiling and Grouting Materials", subCategory: "Tile Adhesives" } },
-  ].map(p => ({
-    ...p,
-    fullName: `${p.name} - ${p.sku} ${p.unit}`,
-    company_id: "RESSICHEM"
-  })),
 
   // ===== DRY MIX MORTARS / PREMIX PLASTERS - CONTINUED =====
   ...[
@@ -939,6 +890,35 @@ const productData = [
 
   // ===== BUILDING CARE AND MAINTENANCE =====
   ...[
+    // Crack Heal Series
+    { name: "Crack Heal 910", unit: "KG", sku: 1, price: 250, category: { mainCategory: "Building Care and Maintenance", subCategory: "Crack Heal" } },
+    { name: "Crack Heal 910", unit: "KG", sku: 20, price: 4000, category: { mainCategory: "Building Care and Maintenance", subCategory: "Crack Heal" } },
+    { name: "Crack Heal 910 2K", unit: "KG", sku: 2.5, price: 1025, category: { mainCategory: "Building Care and Maintenance", subCategory: "Crack Heal" } },
+    { name: "Crack Heal 910 2K", unit: "KG", sku: 25, price: 9688, category: { mainCategory: "Building Care and Maintenance", subCategory: "Crack Heal" } },
+    { name: "Crack Heal 920", unit: "KG", sku: 1, price: 344, category: { mainCategory: "Building Care and Maintenance", subCategory: "Crack Heal" } },
+    { name: "Crack Heal 920", unit: "KG", sku: 20, price: 4750, category: { mainCategory: "Building Care and Maintenance", subCategory: "Crack Heal" } },
+    { name: "Crack Heal 920 2K", unit: "KG", sku: 2.5, price: 1025, category: { mainCategory: "Building Care and Maintenance", subCategory: "Crack Heal" } },
+    { name: "Crack Heal 920 2K", unit: "KG", sku: 25, price: 9688, category: { mainCategory: "Building Care and Maintenance", subCategory: "Crack Heal" } },
+    { name: "Crack Heal 940", unit: "KG", sku: 2.18, price: 1438, category: { mainCategory: "Building Care and Maintenance", subCategory: "Crack Heal" } },
+    { name: "Crack Heal 940", unit: "KG", sku: 21.8, price: 12263, category: { mainCategory: "Building Care and Maintenance", subCategory: "Crack Heal" } },
+    { name: "Crack Heal Flexi 950", unit: "KG", sku: 1, price: 1563, category: { mainCategory: "Building Care and Maintenance", subCategory: "Crack Heal" } },
+    { name: "Crack Heal Flexi 950", unit: "KG", sku: 20, price: 26875, category: { mainCategory: "Building Care and Maintenance", subCategory: "Crack Heal" } },
+    
+    // Tough Guard Series
+    { name: "Tough Guard 12,000 E", unit: "KG", sku: 2.17, price: 1188, category: { mainCategory: "Building Care and Maintenance", subCategory: "Tough Guard" } },
+    { name: "Tough Guard 12,000 E", unit: "KG", sku: 21.7, price: 8875, category: { mainCategory: "Building Care and Maintenance", subCategory: "Tough Guard" } },
+    
+    // Water Guard Series
+    { name: "Water Guard 491", unit: "KG", sku: 3.2, price: 1875, category: { mainCategory: "Building Care and Maintenance", subCategory: "Water Guard" } },
+    { name: "Water Guard 491", unit: "KG", sku: 16, price: 8125, category: { mainCategory: "Building Care and Maintenance", subCategory: "Water Guard" } },
+    { name: "Water Guard 491", unit: "KG", sku: 20, price: 10156, category: { mainCategory: "Building Care and Maintenance", subCategory: "Water Guard" } },
+    { name: "Water Guard 5010", unit: "KG", sku: 3.2, price: 1225, category: { mainCategory: "Building Care and Maintenance", subCategory: "Water Guard" } },
+    { name: "Water Guard 5010", unit: "KG", sku: 16, price: 5438, category: { mainCategory: "Building Care and Maintenance", subCategory: "Water Guard" } },
+    { name: "Water Guard 5010", unit: "KG", sku: 20, price: 6688, category: { mainCategory: "Building Care and Maintenance", subCategory: "Water Guard" } },
+    { name: "Water Guard 5253", unit: "KG", sku: 3.2, price: 938, category: { mainCategory: "Building Care and Maintenance", subCategory: "Water Guard" } },
+    { name: "Water Guard 5253", unit: "KG", sku: 16, price: 3063, category: { mainCategory: "Building Care and Maintenance", subCategory: "Water Guard" } },
+    { name: "Water Guard 5253", unit: "KG", sku: 20, price: 4813, category: { mainCategory: "Building Care and Maintenance", subCategory: "Water Guard" } },
+    
     // Water Guard Series - 3020 N (20 KG)
     { name: "Water Guard 3020 N - 0001", unit: "KG", sku: 20, price: 25213, category: { mainCategory: "Building Care and Maintenance", subCategory: "Water Guard 3020 N" } },
     { name: "Water Guard 3020 N - 9400", unit: "KG", sku: 20, price: 25213, category: { mainCategory: "Building Care and Maintenance", subCategory: "Water Guard 3020 N" } },
@@ -955,7 +935,7 @@ const productData = [
     { name: "Water Guard 1530 Econo - 5210", unit: "KG", sku: 20, price: 15625, category: { mainCategory: "Building Care and Maintenance", subCategory: "Water Guard 1530 Econo" } },
     { name: "Water Guard 1530 Econo - 2400", unit: "KG", sku: 20, price: 15688, category: { mainCategory: "Building Care and Maintenance", subCategory: "Water Guard 1530 Econo" } },
     
-    // Water Guard Series - 1810 (20 KG)
+    // Rain Sheild Series - 1810 (20 KG)
     { name: "Rain Sheild 1810 - 0001", unit: "KG", sku: 20, price: 22000, category: { mainCategory: "Building Care and Maintenance", subCategory: "Rain Sheild 1810" } },
     { name: "Rain Sheild 1810 - 9400", unit: "KG", sku: 20, price: 22000, category: { mainCategory: "Building Care and Maintenance", subCategory: "Rain Sheild 1810" } },
     { name: "Rain Sheild 1810 - 3900 X1 - 1", unit: "KG", sku: 20, price: 22000, category: { mainCategory: "Building Care and Maintenance", subCategory: "Rain Sheild 1810" } },
@@ -963,134 +943,94 @@ const productData = [
     { name: "Rain Sheild 1810 - 5210", unit: "KG", sku: 20, price: 22000, category: { mainCategory: "Building Care and Maintenance", subCategory: "Rain Sheild 1810" } },
     { name: "Rain Sheild 1810 - 2400", unit: "KG", sku: 20, price: 22000, category: { mainCategory: "Building Care and Maintenance", subCategory: "Rain Sheild 1810" } },
     
-    // Water Guard Series - 12,000 E (KG 12 / 200)
-    { name: "Tough Guard 12,000 E", unit: "KG", sku: 12, price: 558, category: { mainCategory: "Building Care and Maintenance", subCategory: "Tough Guard" } },
-    { name: "Tough Guard 12,000 E", unit: "KG", sku: 200, price: 822, category: { mainCategory: "Building Care and Maintenance", subCategory: "Tough Guard" } },
-    
-    // Water Guard Series - 491 (KG 20 / 200)
-    { name: "Water Guard 491", unit: "KG", sku: 20, price: 23125, category: { mainCategory: "Building Care and Maintenance", subCategory: "Water Guard" } },
-    { name: "Water Guard 491", unit: "KG", sku: 200, price: 161, category: { mainCategory: "Building Care and Maintenance", subCategory: "Water Guard" } },
-    
-    // Water Guard Series - 5010 (KG 20 / 200)
-    { name: "Water Guard 5010", unit: "KG", sku: 20, price: 10750, category: { mainCategory: "Building Care and Maintenance", subCategory: "Water Guard" } },
-    { name: "Water Guard 5010", unit: "KG", sku: 200, price: 563, category: { mainCategory: "Building Care and Maintenance", subCategory: "Water Guard" } },
-    
-    // Water Guard Series - 5253 (KG 20 / 200)
-    { name: "Water Guard 5253", unit: "KG", sku: 20, price: 8750, category: { mainCategory: "Building Care and Maintenance", subCategory: "Water Guard" } },
-    { name: "Water Guard 5253", unit: "KG", sku: 200, price: 500, category: { mainCategory: "Building Care and Maintenance", subCategory: "Water Guard" } },
-    
-    // Crack Heal Series
-    { name: "Crack Heal 910", unit: "KG", sku: 1, price: 161, category: { mainCategory: "Building Care and Maintenance", subCategory: "Crack Heal" } },
-    { name: "Crack Heal 910", unit: "KG", sku: 15, price: 2243, category: { mainCategory: "Building Care and Maintenance", subCategory: "Crack Heal" } },
-    { name: "Crack Heal 910 2K", unit: "KG", sku: 1, price: 161, category: { mainCategory: "Building Care and Maintenance", subCategory: "Crack Heal" } },
-    { name: "Crack Heal 910 2K", unit: "KG", sku: 15, price: 2243, category: { mainCategory: "Building Care and Maintenance", subCategory: "Crack Heal" } },
-    { name: "Crack Heal 920", unit: "KG", sku: 1, price: 161, category: { mainCategory: "Building Care and Maintenance", subCategory: "Crack Heal" } },
-    { name: "Crack Heal 920", unit: "KG", sku: 15, price: 2243, category: { mainCategory: "Building Care and Maintenance", subCategory: "Crack Heal" } },
-    { name: "Crack Heal 920 2K", unit: "KG", sku: 1, price: 161, category: { mainCategory: "Building Care and Maintenance", subCategory: "Crack Heal" } },
-    { name: "Crack Heal 920 2K", unit: "KG", sku: 15, price: 2243, category: { mainCategory: "Building Care and Maintenance", subCategory: "Crack Heal" } },
-    { name: "Crack Heal 930", unit: "KG", sku: 1, price: 161, category: { mainCategory: "Building Care and Maintenance", subCategory: "Crack Heal" } },
-    { name: "Crack Heal 930", unit: "KG", sku: 15, price: 2243, category: { mainCategory: "Building Care and Maintenance", subCategory: "Crack Heal" } },
-    { name: "Crack Heal 940", unit: "KG", sku: 1, price: 161, category: { mainCategory: "Building Care and Maintenance", subCategory: "Crack Heal" } },
-    { name: "Crack Heal 940", unit: "KG", sku: 15, price: 2243, category: { mainCategory: "Building Care and Maintenance", subCategory: "Crack Heal" } },
-    { name: "Crack Heal Flexi 950", unit: "KG", sku: 1, price: 161, category: { mainCategory: "Building Care and Maintenance", subCategory: "Crack Heal" } },
-    { name: "Crack Heal Flexi 950", unit: "KG", sku: 15, price: 2243, category: { mainCategory: "Building Care and Maintenance", subCategory: "Crack Heal" } },
-    
-    // Wall Guard Series
-    { name: "Wall Guard 11,000 G", unit: "KG", sku: 1, price: 161, category: { mainCategory: "Building Care and Maintenance", subCategory: "Wall Guard" } },
-    { name: "Wall Guard 11,000 G", unit: "KG", sku: 15, price: 2243, category: { mainCategory: "Building Care and Maintenance", subCategory: "Wall Guard" } },
-    
-    // Water Guard 247 Series
-    { name: "Water Guard 247", unit: "LTR", sku: 1, price: 891, category: { mainCategory: "Building Care and Maintenance", subCategory: "Water Guard 247" } },
-    { name: "Water Guard 247", unit: "LTR", sku: 5, price: 4313, category: { mainCategory: "Building Care and Maintenance", subCategory: "Water Guard 247" } },
-    { name: "Water Guard 247", unit: "LTR", sku: 10, price: 8338, category: { mainCategory: "Building Care and Maintenance", subCategory: "Water Guard 247" } },
-    { name: "Water Guard 247", unit: "LTR", sku: 15, price: 12075, category: { mainCategory: "Building Care and Maintenance", subCategory: "Water Guard 247" } },
-    { name: "Water Guard 247", unit: "LTR", sku: 25, price: 19550, category: { mainCategory: "Building Care and Maintenance", subCategory: "Water Guard 247" } },
-    { name: "Water Guard 247", unit: "LTR", sku: 200, price: 151800, category: { mainCategory: "Building Care and Maintenance", subCategory: "Water Guard 247" } },
-    { name: "Water Guard 247 Plus", unit: "KG", sku: 1, price: 175, category: { mainCategory: "Building Care and Maintenance", subCategory: "Water Guard 247" } },
-    { name: "Water Guard 247 Plus", unit: "KG", sku: 20, price: 3250, category: { mainCategory: "Building Care and Maintenance", subCategory: "Water Guard 247" } },
-    
-    // Water Guard 1530 Econo Series (LTR)
-    { name: "Water Guard 1530 Econo", unit: "LTR", sku: 1, price: 978, category: { mainCategory: "Building Care and Maintenance", subCategory: "Water Guard 1530 Econo" } },
-    { name: "Water Guard 1530 Econo", unit: "LTR", sku: 5, price: 4744, category: { mainCategory: "Building Care and Maintenance", subCategory: "Water Guard 1530 Econo" } },
-    { name: "Water Guard 1530 Econo", unit: "LTR", sku: 10, price: 9200, category: { mainCategory: "Building Care and Maintenance", subCategory: "Water Guard 1530 Econo" } },
-    { name: "Water Guard 1530 Econo", unit: "LTR", sku: 15, price: 13369, category: { mainCategory: "Building Care and Maintenance", subCategory: "Water Guard 1530 Econo" } },
-    { name: "Water Guard 1530 Econo", unit: "LTR", sku: 30, price: 21563, category: { mainCategory: "Building Care and Maintenance", subCategory: "Water Guard 1530 Econo" } },
-    { name: "Water Guard 1530 Econo", unit: "LTR", sku: 200, price: 166750, category: { mainCategory: "Building Care and Maintenance", subCategory: "Water Guard 1530 Econo" } },
-    
     // Silprime 3K
-    { name: "Silprime 3K", unit: "LTR", sku: 1, price: 1513, category: { mainCategory: "Building Care and Maintenance", subCategory: "Silprime" } },
-    { name: "Silprime 3K", unit: "LTR", sku: 5, price: 7500, category: { mainCategory: "Building Care and Maintenance", subCategory: "Silprime" } },
-    { name: "Silprime 3K", unit: "LTR", sku: 10, price: 14750, category: { mainCategory: "Building Care and Maintenance", subCategory: "Silprime" } },
-    { name: "Silprime 3K", unit: "LTR", sku: 15, price: 21750, category: { mainCategory: "Building Care and Maintenance", subCategory: "Silprime" } },
-    { name: "Silprime 3K", unit: "LTR", sku: 25, price: 35625, category: { mainCategory: "Building Care and Maintenance", subCategory: "Silprime" } },
-    { name: "Silprime 3K", unit: "LTR", sku: 200, price: 280000, category: { mainCategory: "Building Care and Maintenance", subCategory: "Silprime" } },
+    { name: "Silprime 3K", unit: "KG", sku: 1.25, price: 5000, category: { mainCategory: "Building Care and Maintenance", subCategory: "Silprime" } },
     
     // Damp Seal
-    { name: "Damp Seal", unit: "LTR", sku: 1, price: 2688, category: { mainCategory: "Building Care and Maintenance", subCategory: "Damp Seal" } },
-    { name: "Damp Seal", unit: "LTR", sku: 5, price: 13313, category: { mainCategory: "Building Care and Maintenance", subCategory: "Damp Seal" } },
-    { name: "Damp Seal", unit: "LTR", sku: 10, price: 26375, category: { mainCategory: "Building Care and Maintenance", subCategory: "Damp Seal" } },
-    { name: "Damp Seal", unit: "LTR", sku: 15, price: 39375, category: { mainCategory: "Building Care and Maintenance", subCategory: "Damp Seal" } },
-    { name: "Damp Seal", unit: "LTR", sku: 25, price: 64063, category: { mainCategory: "Building Care and Maintenance", subCategory: "Damp Seal" } },
-    { name: "Damp Seal", unit: "LTR", sku: 200, price: 500000, category: { mainCategory: "Building Care and Maintenance", subCategory: "Damp Seal" } },
+    { name: "Damp Seal", unit: "KG", sku: 1.25, price: 4688, category: { mainCategory: "Building Care and Maintenance", subCategory: "Damp Seal" } },
     
     // Silmix
-    { name: "Silmix", unit: "KG", sku: 1, price: 88, category: { mainCategory: "Building Care and Maintenance", subCategory: "Silmix" } },
-    { name: "Silmix", unit: "KG", sku: 20, price: 1075, category: { mainCategory: "Building Care and Maintenance", subCategory: "Silmix" } },
+    { name: "Silmix", unit: "LTR", sku: 1, price: 1088, category: { mainCategory: "Building Care and Maintenance", subCategory: "Silmix" } },
+    { name: "Silmix", unit: "LTR", sku: 5, price: 5375, category: { mainCategory: "Building Care and Maintenance", subCategory: "Silmix" } },
+    { name: "Silmix", unit: "LTR", sku: 10, price: 10625, category: { mainCategory: "Building Care and Maintenance", subCategory: "Silmix" } },
+    { name: "Silmix", unit: "LTR", sku: 15, price: 15750, category: { mainCategory: "Building Care and Maintenance", subCategory: "Silmix" } },
+    { name: "Silmix", unit: "LTR", sku: 25, price: 25938, category: { mainCategory: "Building Care and Maintenance", subCategory: "Silmix" } },
+    { name: "Silmix", unit: "LTR", sku: 200, price: 200000, category: { mainCategory: "Building Care and Maintenance", subCategory: "Silmix" } },
     
     // Ressi SBR Series
-    { name: "Ressi SBR 5850", unit: "KG", sku: 2.5, price: 1875, category: { mainCategory: "Building Care and Maintenance", subCategory: "SBR" } },
-    { name: "Ressi SBR 5850", unit: "KG", sku: 25, price: 13750, category: { mainCategory: "Building Care and Maintenance", subCategory: "SBR" } },
-    { name: "Ressi SBR 5840", unit: "KG", sku: 2.5, price: 2250, category: { mainCategory: "Building Care and Maintenance", subCategory: "SBR" } },
-    { name: "Ressi SBR 5840", unit: "KG", sku: 25, price: 14063, category: { mainCategory: "Building Care and Maintenance", subCategory: "SBR" } },
-    { name: "Ressi SBR 5840", unit: "KG", sku: 16, price: 19875, category: { mainCategory: "Building Care and Maintenance", subCategory: "SBR" } },
+    { name: "Ressi SBR 5850", unit: "KG", sku: 1, price: 1125, category: { mainCategory: "Building Care and Maintenance", subCategory: "SBR" } },
+    { name: "Ressi SBR 5850", unit: "KG", sku: 5, price: 5469, category: { mainCategory: "Building Care and Maintenance", subCategory: "SBR" } },
+    { name: "Ressi SBR 5850", unit: "KG", sku: 10, price: 10688, category: { mainCategory: "Building Care and Maintenance", subCategory: "SBR" } },
+    { name: "Ressi SBR 5850", unit: "KG", sku: 15, price: 15750, category: { mainCategory: "Building Care and Maintenance", subCategory: "SBR" } },
+    { name: "Ressi SBR 5850", unit: "KG", sku: 25, price: 25781, category: { mainCategory: "Building Care and Maintenance", subCategory: "SBR" } },
+    { name: "Ressi SBR 5850", unit: "KG", sku: 200, price: 198000, category: { mainCategory: "Building Care and Maintenance", subCategory: "SBR" } },
     
     // Ressi Guru
-    { name: "Ressi Guru", unit: "KG", sku: 1, price: 250, category: { mainCategory: "Building Care and Maintenance", subCategory: "Ressi Guru" } },
-    { name: "Ressi Guru", unit: "KG", sku: 20, price: 4375, category: { mainCategory: "Building Care and Maintenance", subCategory: "Ressi Guru" } },
+    { name: "Ressi Guru", unit: "KG", sku: 1, price: 606, category: { mainCategory: "Building Care and Maintenance", subCategory: "Ressi Guru" } },
+    { name: "Ressi Guru", unit: "KG", sku: 5, price: 2969, category: { mainCategory: "Building Care and Maintenance", subCategory: "Ressi Guru" } },
+    { name: "Ressi Guru", unit: "KG", sku: 10, price: 5813, category: { mainCategory: "Building Care and Maintenance", subCategory: "Ressi Guru" } },
+    { name: "Ressi Guru", unit: "KG", sku: 25, price: 13906, category: { mainCategory: "Building Care and Maintenance", subCategory: "Ressi Guru" } },
+    { name: "Ressi Guru", unit: "KG", sku: 200, price: 107500, category: { mainCategory: "Building Care and Maintenance", subCategory: "Ressi Guru" } },
+    
+    // Ressi SBR 5840
+    { name: "Ressi SBR 5840", unit: "KG", sku: 1, price: 563, category: { mainCategory: "Building Care and Maintenance", subCategory: "SBR" } },
+    { name: "Ressi SBR 5840", unit: "KG", sku: 5, price: 2750, category: { mainCategory: "Building Care and Maintenance", subCategory: "SBR" } },
+    { name: "Ressi SBR 5840", unit: "KG", sku: 10, price: 5375, category: { mainCategory: "Building Care and Maintenance", subCategory: "SBR" } },
+    { name: "Ressi SBR 5840", unit: "KG", sku: 15, price: 7781, category: { mainCategory: "Building Care and Maintenance", subCategory: "SBR" } },
+    { name: "Ressi SBR 5840", unit: "KG", sku: 25, price: 12813, category: { mainCategory: "Building Care and Maintenance", subCategory: "SBR" } },
+    { name: "Ressi SBR 5840", unit: "KG", sku: 200, price: 100000, category: { mainCategory: "Building Care and Maintenance", subCategory: "SBR" } },
     
     // Water Guard L 100
-    { name: "Water Guard L 100", unit: "KG", sku: 20, price: 23125, category: { mainCategory: "Building Care and Maintenance", subCategory: "Water Guard" } },
+    { name: "Water Guard L 100", unit: "KG", sku: 1, price: 3125, category: { mainCategory: "Building Care and Maintenance", subCategory: "Water Guard" } },
+    { name: "Water Guard L 100", unit: "KG", sku: 5, price: 15000, category: { mainCategory: "Building Care and Maintenance", subCategory: "Water Guard" } },
+    { name: "Water Guard L 100", unit: "KG", sku: 10, price: 28750, category: { mainCategory: "Building Care and Maintenance", subCategory: "Water Guard" } },
+    { name: "Water Guard L 100", unit: "KG", sku: 15, price: 42750, category: { mainCategory: "Building Care and Maintenance", subCategory: "Water Guard" } },
+    { name: "Water Guard L 100", unit: "KG", sku: 25, price: 69375, category: { mainCategory: "Building Care and Maintenance", subCategory: "Water Guard" } },
+    { name: "Water Guard L 100", unit: "KG", sku: 200, price: 550000, category: { mainCategory: "Building Care and Maintenance", subCategory: "Water Guard" } },
     
-    // Additional Building Care Products
+    // Water Guard P 200
+    { name: "Water Guard P 200", unit: "KG", sku: 1, price: 175, category: { mainCategory: "Building Care and Maintenance", subCategory: "Water Guard" } },
+    { name: "Water Guard P 200", unit: "KG", sku: 20, price: 3250, category: { mainCategory: "Building Care and Maintenance", subCategory: "Water Guard" } },
+    
+    // Silblock (first set - lower prices)
+    { name: "Silblock", unit: "LTR", sku: 1, price: 1513, category: { mainCategory: "Building Care and Maintenance", subCategory: "Silblock" } },
+    { name: "Silblock", unit: "LTR", sku: 5, price: 7500, category: { mainCategory: "Building Care and Maintenance", subCategory: "Silblock" } },
+    { name: "Silblock", unit: "LTR", sku: 10, price: 14750, category: { mainCategory: "Building Care and Maintenance", subCategory: "Silblock" } },
+    { name: "Silblock", unit: "LTR", sku: 15, price: 21750, category: { mainCategory: "Building Care and Maintenance", subCategory: "Silblock" } },
+    { name: "Silblock", unit: "LTR", sku: 25, price: 35625, category: { mainCategory: "Building Care and Maintenance", subCategory: "Silblock" } },
+    { name: "Silblock", unit: "LTR", sku: 200, price: 280000, category: { mainCategory: "Building Care and Maintenance", subCategory: "Silblock" } },
+    // Silblock (second set - higher prices, named as Silblock PLUS to differentiate)
+    { name: "Silblock PLUS", unit: "LTR", sku: 1, price: 2688, category: { mainCategory: "Building Care and Maintenance", subCategory: "Silblock" } },
+    { name: "Silblock PLUS", unit: "LTR", sku: 5, price: 13313, category: { mainCategory: "Building Care and Maintenance", subCategory: "Silblock" } },
+    { name: "Silblock PLUS", unit: "LTR", sku: 10, price: 26375, category: { mainCategory: "Building Care and Maintenance", subCategory: "Silblock" } },
+    { name: "Silblock PLUS", unit: "LTR", sku: 15, price: 39375, category: { mainCategory: "Building Care and Maintenance", subCategory: "Silblock" } },
+    { name: "Silblock PLUS", unit: "LTR", sku: 25, price: 64063, category: { mainCategory: "Building Care and Maintenance", subCategory: "Silblock" } },
+    { name: "Silblock PLUS", unit: "LTR", sku: 200, price: 500000, category: { mainCategory: "Building Care and Maintenance", subCategory: "Silblock" } },
+    
+    // Patch Series
+    { name: "Patch 365", unit: "KG", sku: 1, price: 88, category: { mainCategory: "Building Care and Maintenance", subCategory: "Patch" } },
+    { name: "Patch 365", unit: "KG", sku: 20, price: 1075, category: { mainCategory: "Building Care and Maintenance", subCategory: "Patch" } },
+    { name: "Patch 365 Plus", unit: "KG", sku: 2.5, price: 1875, category: { mainCategory: "Building Care and Maintenance", subCategory: "Patch" } },
+    { name: "Patch 365 Plus", unit: "KG", sku: 25, price: 13750, category: { mainCategory: "Building Care and Maintenance", subCategory: "Patch" } },
+    { name: "Patch Epoxy 111", unit: "KG", sku: 2.5, price: 2250, category: { mainCategory: "Building Care and Maintenance", subCategory: "Patch" } },
+    { name: "Patch Epoxy 111", unit: "KG", sku: 25, price: 14063, category: { mainCategory: "Building Care and Maintenance", subCategory: "Patch" } },
+    { name: "Patch Epoxy 222", unit: "KG", sku: 16, price: 19875, category: { mainCategory: "Building Care and Maintenance", subCategory: "Patch" } },
+    { name: "Rapid Patch 999", unit: "KG", sku: 1, price: 250, category: { mainCategory: "Building Care and Maintenance", subCategory: "Patch" } },
+    { name: "Rapid Patch 999", unit: "KG", sku: 20, price: 4375, category: { mainCategory: "Building Care and Maintenance", subCategory: "Patch" } },
+    
+    // Heat Guard
+    { name: "Heat Guard 1000", unit: "KG", sku: 20, price: 23125, category: { mainCategory: "Building Care and Maintenance", subCategory: "Heat Guard" } },
+    
+    // Water Guard Crysta Series
     { name: "Water Guard Crysta Coat 101", unit: "KG", sku: 1, price: 563, category: { mainCategory: "Building Care and Maintenance", subCategory: "Water Guard" } },
     { name: "Water Guard Crysta Coat 101", unit: "KG", sku: 20, price: 10000, category: { mainCategory: "Building Care and Maintenance", subCategory: "Water Guard" } },
     { name: "Water Guard Crysta Coat 102", unit: "KG", sku: 1, price: 500, category: { mainCategory: "Building Care and Maintenance", subCategory: "Water Guard" } },
     { name: "Water Guard Crysta Coat 102", unit: "KG", sku: 20, price: 8750, category: { mainCategory: "Building Care and Maintenance", subCategory: "Water Guard" } },
     { name: "Water Guard Crysta Admix 103", unit: "KG", sku: 1, price: 713, category: { mainCategory: "Building Care and Maintenance", subCategory: "Water Guard" } },
     { name: "Water Guard Crysta Admix 103", unit: "KG", sku: 20, price: 13000, category: { mainCategory: "Building Care and Maintenance", subCategory: "Water Guard" } },
-    { name: "Silblock", unit: "KG", sku: 1, price: 250, category: { mainCategory: "Building Care and Maintenance", subCategory: "Silblock" } },
-    { name: "Silblock", unit: "KG", sku: 20, price: 4375, category: { mainCategory: "Building Care and Maintenance", subCategory: "Silblock" } },
-    { name: "Silblock PLUS", unit: "KG", sku: 2.5, price: 1875, category: { mainCategory: "Building Care and Maintenance", subCategory: "Silblock" } },
-    { name: "Silblock PLUS", unit: "KG", sku: 25, price: 14063, category: { mainCategory: "Building Care and Maintenance", subCategory: "Silblock" } },
-    { name: "Patch 365", unit: "KG", sku: 1, price: 3125, category: { mainCategory: "Building Care and Maintenance", subCategory: "Patch" } },
-    { name: "Patch 365", unit: "KG", sku: 5, price: 15000, category: { mainCategory: "Building Care and Maintenance", subCategory: "Patch" } },
-    { name: "Patch 365", unit: "KG", sku: 10, price: 28750, category: { mainCategory: "Building Care and Maintenance", subCategory: "Patch" } },
-    { name: "Patch 365", unit: "KG", sku: 15, price: 42750, category: { mainCategory: "Building Care and Maintenance", subCategory: "Patch" } },
-    { name: "Patch 365", unit: "KG", sku: 25, price: 69375, category: { mainCategory: "Building Care and Maintenance", subCategory: "Patch" } },
-    { name: "Patch 365", unit: "KG", sku: 200, price: 550000, category: { mainCategory: "Building Care and Maintenance", subCategory: "Patch" } },
-    { name: "Patch 365 Plus", unit: "KG", sku: 2.5, price: 2250, category: { mainCategory: "Building Care and Maintenance", subCategory: "Patch" } },
-    { name: "Patch 365 Plus", unit: "KG", sku: 25, price: 14063, category: { mainCategory: "Building Care and Maintenance", subCategory: "Patch" } },
-    { name: "Patch Epoxy 111", unit: "KG", sku: 1, price: 3125, category: { mainCategory: "Building Care and Maintenance", subCategory: "Patch" } },
-    { name: "Patch Epoxy 111", unit: "KG", sku: 5, price: 15000, category: { mainCategory: "Building Care and Maintenance", subCategory: "Patch" } },
-    { name: "Patch Epoxy 111", unit: "KG", sku: 10, price: 28750, category: { mainCategory: "Building Care and Maintenance", subCategory: "Patch" } },
-    { name: "Patch Epoxy 111", unit: "KG", sku: 15, price: 42750, category: { mainCategory: "Building Care and Maintenance", subCategory: "Patch" } },
-    { name: "Patch Epoxy 111", unit: "KG", sku: 25, price: 69375, category: { mainCategory: "Building Care and Maintenance", subCategory: "Patch" } },
-    { name: "Patch Epoxy 111", unit: "KG", sku: 200, price: 550000, category: { mainCategory: "Building Care and Maintenance", subCategory: "Patch" } },
-    { name: "Patch Epoxy 222", unit: "KG", sku: 2.5, price: 2250, category: { mainCategory: "Building Care and Maintenance", subCategory: "Patch" } },
-    { name: "Patch Epoxy 222", unit: "KG", sku: 25, price: 14063, category: { mainCategory: "Building Care and Maintenance", subCategory: "Patch" } },
-    { name: "Rapid Patch 999", unit: "KG", sku: 1, price: 3125, category: { mainCategory: "Building Care and Maintenance", subCategory: "Patch" } },
-    { name: "Rapid Patch 999", unit: "KG", sku: 5, price: 15000, category: { mainCategory: "Building Care and Maintenance", subCategory: "Patch" } },
-    { name: "Rapid Patch 999", unit: "KG", sku: 10, price: 28750, category: { mainCategory: "Building Care and Maintenance", subCategory: "Patch" } },
-    { name: "Rapid Patch 999", unit: "KG", sku: 15, price: 42750, category: { mainCategory: "Building Care and Maintenance", subCategory: "Patch" } },
-    { name: "Rapid Patch 999", unit: "KG", sku: 25, price: 69375, category: { mainCategory: "Building Care and Maintenance", subCategory: "Patch" } },
-    { name: "Rapid Patch 999", unit: "KG", sku: 200, price: 550000, category: { mainCategory: "Building Care and Maintenance", subCategory: "Patch" } },
-    { name: "Water Guard P 200", unit: "KG", sku: 20, price: 558, category: { mainCategory: "Building Care and Maintenance", subCategory: "Water Guard" } },
-    // Heat Guard 1000 - 20 KG (keeping only the correct price: 1156)
-    // NOTE: The import script had 8 duplicate entries with different prices
-    // Database has price 1156, which matches one of the entries, so keeping that
-    { name: "Heat Guard 1000", unit: "KG", sku: 20, price: 1156, category: { mainCategory: "Building Care and Maintenance", subCategory: "Heat Guard" } },
-    { name: "Heat Guard 1000", unit: "KG", sku: 25, price: 12075, category: { mainCategory: "Building Care and Maintenance", subCategory: "Heat Guard" } },
-    { name: "Heat Guard 1000", unit: "KG", sku: 32, price: 35650, category: { mainCategory: "Building Care and Maintenance", subCategory: "Heat Guard" } },
+    
+    // Zepoxy Products - Building Care and Maintenance
+    ...require('./buildingCareProductsList').buildingCareProducts,
   ].map(p => ({
     ...p,
     fullName: `${p.name} - ${p.sku} ${p.unit}`,
@@ -1142,10 +1082,15 @@ const productData = [
     company_id: "RESSICHEM"
   })),
 
-  // ===== ZEPOXY PRODUCTS - UPDATED WITH PRICES =====
+  // ===== REMOVED DUPLICATE ZEPOXY SECTION - Products are now in main Epoxy Adhesives and Coatings section above =====
+  // All Zepoxy products are now in the main section above (lines 327-464)
+  // The duplicate section below has been commented out to prevent importing old products
+  
+  // ===== COMMENTED OUT - DUPLICATE ZEPOXY SECTION (DO NOT UNCOMMENT) =====
+  // All products below are commented out - they are duplicates and should not be imported
+  /*
   ...[
-    // Zepoxy Electropot Series (with prices from pasted data)
-    { name: "Zepoxy Electropot", unit: "KG", sku: 15, price: 5107, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
+    // Specialty Products (duplicate section - keeping for reference)
     { name: "Zepoxy Electropot", unit: "KG", sku: 24, price: 7447, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
     { name: "Zepoxy Electropot", unit: "KG", sku: 45, price: 114149, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
     { name: "Zepoxy Electropot DT-W", unit: "KG", sku: 0.615, price: 745, category: { mainCategory: "Epoxy Adhesives and Coatings", subCategory: "Resins" } },
@@ -1443,7 +1388,15 @@ const productData = [
     
     // Ressi Reactive Stain, Ressi Neutraliser, Polymer, MT Base Coat, MT Top Coat, MT - Polymer Liquid, Terrazzo Retarder
     // REMOVED - All duplicates, correct entries are in Decorative Concrete section
-    
+  ].map(p => ({
+    ...p,
+    fullName: `${p.name} - ${p.sku} ${p.unit}`,
+    company_id: "RESSICHEM"
+  })),
+  */
+  
+  // ===== SPECIALTY PRODUCTS (DUPLICATE SECTION - KEEPING FOR REFERENCE) =====
+  ...[
     // Specialty Products
     { name: "Ressi NSG 710", unit: "KG", sku: 20, price: 2100, category: { mainCategory: "Specialty Products", subCategory: "Specialty" } },
     { name: "Ressi Kerb Grout 102", unit: "KG", sku: 20, price: 960, category: { mainCategory: "Specialty Products", subCategory: "Specialty" } },
@@ -1451,6 +1404,7 @@ const productData = [
     { name: "Zepoxy LEEG 10", unit: "KG", sku: 25, price: 66000, category: { mainCategory: "Specialty Products", subCategory: "Specialty" } },
     { name: "Ressi Anchor Fix", unit: "KG", sku: 3.8, price: 7245, category: { mainCategory: "Specialty Products", subCategory: "Specialty" } },
     { name: "Ressi Anchor Fix", unit: "KG", sku: 38, price: 70680, category: { mainCategory: "Specialty Products", subCategory: "Specialty" } },
+    { name: "Ressi EPO Anchor Pro 3:1", unit: "KG", sku: 0.565, price: 2340, category: { mainCategory: "Specialty Products", subCategory: "Specialty" } },
   ].map(p => ({
     ...p,
     fullName: `${p.name} - ${p.sku} ${p.unit}`,

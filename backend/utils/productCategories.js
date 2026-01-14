@@ -12,7 +12,7 @@ const productCategories = {
     "Thin Coat Brush, Roller and Spray Applied": []
   },
   
-  "Building Care & Maintenance": {},
+  "Building Care and Maintenance": {},
   
   "Epoxy Adhesives and Coatings": {
     "Resins": {

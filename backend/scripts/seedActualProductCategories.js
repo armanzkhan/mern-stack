@@ -45,7 +45,7 @@ async function seedActualProductCategories() {
     const mainCategories = [
       "Dry Mix Mortars / Premix Plasters",
       "Epoxy Floorings & Coatings", 
-      "Building Care & Maintenance",
+      "Building Care and Maintenance",
       "Epoxy Adhesives and Coatings",
       "Tiling and Grouting Materials",
       "Concrete Admixtures",

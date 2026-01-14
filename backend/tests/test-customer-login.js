@@ -1,58 +1,36 @@
-const mongoose = require("mongoose");
-const User = require("./models/User");
-const Customer = require("./models/Customer");
-const Manager = require("./models/Manager");
+// Test customer login
+require('dotenv').config();
+const axios = require('axios');
 
-async function testCustomerLogin() {
+const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:5000';
+const TEST_EMAIL = process.env.TEST_EMAIL || 'yousuf@gmail.com';
+const TEST_PASSWORD = process.env.TEST_PASSWORD || 'yousuf123';
+
+async function testLogin() {
   try {
-    await mongoose.connect(process.env.CONNECTION_STRING || "mongodb://localhost:27017/Ressichem");
-    console.log("✅ Connected to MongoDB");
-
-    // Test customer login
-    const customerEmail = "areeba@ogdlc.com";
-    const customer = await Customer.findOne({ email: customerEmail });
+    console.log('🧪 Testing customer login...');
+    console.log(`Backend URL: ${BACKEND_URL}`);
+    console.log(`Email: ${TEST_EMAIL}`);
+    console.log('');
     
-    if (!customer) {
-      console.log("❌ Customer not found:", customerEmail);
-      return;
-    }
-
-    console.log("👤 Customer found:", {
-      companyName: customer.companyName,
-      email: customer.email,
-      assignedManager: customer.assignedManager
+    const response = await axios.post(`${BACKEND_URL}/api/auth/login`, {
+      email: TEST_EMAIL,
+      password: TEST_PASSWORD
     });
-
-    // Check if customer has assigned manager
-    if (customer.assignedManager?.manager_id) {
-      const manager = await Manager.findById(customer.assignedManager.manager_id);
-      console.log("👨‍💼 Assigned manager:", {
-        manager_id: manager._id,
-        user_id: manager.user_id,
-        assignedCategories: manager.assignedCategories
-      });
-    } else {
-      console.log("❌ Customer has no assigned manager");
-    }
-
-    // Check user account
-    const user = await User.findOne({ email: customerEmail });
-    if (user) {
-      console.log("👤 User account:", {
-        user_id: user.user_id,
-        email: user.email,
-        role: user.role,
-        isActive: user.isActive
-      });
-    } else {
-      console.log("❌ No user account found for customer");
-    }
-
+    
+    console.log('✅ Login successful!');
+    console.log('User Type:', response.data.user?.userType);
+    console.log('Is Customer:', response.data.user?.isCustomer);
+    console.log('Response:', JSON.stringify(response.data, null, 2));
   } catch (error) {
-    console.error("❌ Error:", error);
-  } finally {
-    await mongoose.connection.close();
+    console.error('❌ Login failed!');
+    console.error('Status:', error.response?.status);
+    console.error('Error data:', JSON.stringify(error.response?.data, null, 2));
+    if (error.response?.data?.error) {
+      console.error('Backend error:', error.response.data.error);
+    }
   }
 }
 
-testCustomerLogin();
+testLogin();
+

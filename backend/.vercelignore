@@ -1,6 +1,6 @@
 # Ignore backup directory with individual function files
 api/_backup/
 
-# Ignore utility files (they're not serverless functions)
-api/_utils/
+# NOTE: api/_utils/ is REQUIRED by api/index.js - DO NOT ignore it!
+# The _utils folder contains db.js which is needed for database connections
 

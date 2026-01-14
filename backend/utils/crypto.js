@@ -5,9 +5,19 @@ const DEFAULT_ALGO = "aes-256-gcm";
 
 function getKey() {
   const keyBase64 = process.env.ENCRYPTION_KEY;
+  
   if (!keyBase64) {
-    throw new Error("ENCRYPTION_KEY is not set");
+    // Fallback for development - generate a consistent key from a default value
+    // ⚠️ WARNING: This is NOT secure for production!
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error("ENCRYPTION_KEY is not set. This is required in production!");
+    }
+    console.warn("⚠️ ENCRYPTION_KEY not set. Using fallback key for development only!");
+    // Generate a consistent 32-byte key from a default string
+    const defaultKey = "ressichem-default-encryption-key-2024";
+    return crypto.createHash('sha256').update(defaultKey).digest();
   }
+  
   const key = Buffer.from(keyBase64, "base64");
   if (key.length !== 32) {
     throw new Error("ENCRYPTION_KEY must be 32 bytes (base64 of 32 bytes)");

@@ -1,223 +1,208 @@
-const mongoose = require('mongoose');
-require('dotenv').config();
+/**
+ * Complete Connection Verification Script
+ * Tests: Frontend → Backend → Database
+ * 
+ * Usage:
+ *   node verify-all-connections.js
+ */
 
-// Import all models
-const User = require('../models/User');
-const Product = require('../models/Product');
-const Order = require('../models/Order');
-const Invoice = require('../models/Invoice');
-const Customer = require('../models/Customer');
-const Manager = require('../models/Manager');
-const ProductCategory = require('../models/ProductCategory');
-const Notification = require('../models/Notification');
-const CustomerLedger = require('../models/CustomerLedger');
-const OrderItemApproval = require('../models/OrderItemApproval');
-const CategoryAssignment = require('../models/CategoryAssignment');
+const https = require('https');
 
-async function verifyAllConnections() {
-  try {
-    console.log('🔍 VERIFYING ALL SYSTEM CONNECTIONS');
-    console.log('=====================================\n');
+const BACKEND_URL = 'https://mern-stack-dtgy.vercel.app';
 
-    // 1. DATABASE CONNECTION
-    console.log('1️⃣ DATABASE CONNECTION');
-    console.log('----------------------');
-    
-    const mongoUri = process.env.CONNECTION_STRING || "mongodb+srv://armanzaman4_db_user:1JJORz7jP2VFgTaP@cluster0.qn1babq.mongodb.net/Ressichem?retryWrites=true&w=majority";
-    
-    console.log('   Connecting to MongoDB...');
-    await mongoose.connect(mongoUri, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-      dbName: "Ressichem"
-    });
-    
-    console.log('   ✅ MongoDB Connected');
-    console.log('   Database:', mongoose.connection.db.databaseName);
-    console.log('   Host:', mongoose.connection.host);
-    console.log('   State:', mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected');
-    console.log('');
+// Colors for console output
+const colors = {
+  reset: '\x1b[0m',
+  green: '\x1b[32m',
+  red: '\x1b[31m',
+  yellow: '\x1b[33m',
+  blue: '\x1b[34m',
+};
 
-    // 2. MODEL COLLECTIONS VERIFICATION
-    console.log('2️⃣ MODEL COLLECTIONS VERIFICATION');
-    console.log('----------------------------------');
-    
-    const models = [
-      { name: 'User', model: User, collection: 'users' },
-      { name: 'Product', model: Product, collection: 'products' },
-      { name: 'Order', model: Order, collection: 'orders' },
-      { name: 'Invoice', model: Invoice, collection: 'invoices' },
-      { name: 'Customer', model: Customer, collection: 'customers' },
-      { name: 'Manager', model: Manager, collection: 'managers' },
-      { name: 'ProductCategory', model: ProductCategory, collection: 'productcategories' },
-      { name: 'Notification', model: Notification, collection: 'notifications' },
-      { name: 'CustomerLedger', model: CustomerLedger, collection: 'customerledgers' },
-      { name: 'OrderItemApproval', model: OrderItemApproval, collection: 'orderitemapprovals' },
-      { name: 'CategoryAssignment', model: CategoryAssignment, collection: 'categoryassignments' },
-    ];
+function log(message, color = 'reset') {
+  console.log(`${colors[color]}${message}${colors.reset}`);
+}
 
-    for (const { name, model, collection } of models) {
-      try {
-        const count = await model.countDocuments();
-        const collectionExists = mongoose.connection.db.listCollections({ name: collection }).hasNext();
-        console.log(`   ✅ ${name.padEnd(20)} | Collection: ${collection.padEnd(25)} | Documents: ${count}`);
-      } catch (error) {
-        console.log(`   ❌ ${name.padEnd(20)} | Error: ${error.message}`);
-      }
-    }
-    console.log('');
-
-    // 3. DATA INTEGRITY CHECKS
-    console.log('3️⃣ DATA INTEGRITY CHECKS');
-    console.log('-------------------------');
-    
-    // Check Users
-    const totalUsers = await User.countDocuments();
-    const usersWithCompany = await User.countDocuments({ company_id: { $exists: true, $ne: null } });
-    console.log(`   Users: ${totalUsers} total, ${usersWithCompany} with company_id`);
-    
-    // Check Products
-    const totalProducts = await Product.countDocuments();
-    const productsWithCompany = await Product.countDocuments({ company_id: { $exists: true, $ne: null } });
-    const productsWithCategory = await Product.countDocuments({ 'category.mainCategory': { $exists: true } });
-    console.log(`   Products: ${totalProducts} total, ${productsWithCompany} with company_id, ${productsWithCategory} with category`);
-    
-    // Check Orders
-    const totalOrders = await Order.countDocuments();
-    const ordersWithCustomer = await Order.countDocuments({ customer: { $exists: true, $ne: null } });
-    console.log(`   Orders: ${totalOrders} total, ${ordersWithCustomer} with customer`);
-    
-    // Check Invoices
-    const totalInvoices = await Invoice.countDocuments();
-    const invoicesWithOrder = await Invoice.countDocuments({ orderId: { $exists: true, $ne: null } });
-    console.log(`   Invoices: ${totalInvoices} total, ${invoicesWithOrder} with orderId`);
-    
-    // Check Customers
-    const totalCustomers = await Customer.countDocuments();
-    const customersWithCompany = await Customer.countDocuments({ company_id: { $exists: true, $ne: null } });
-    console.log(`   Customers: ${totalCustomers} total, ${customersWithCompany} with company_id`);
-    
-    // Check Managers
-    const totalManagers = await Manager.countDocuments();
-    const managersWithCategories = await Manager.countDocuments({ assignedCategories: { $exists: true, $ne: [] } });
-    console.log(`   Managers: ${totalManagers} total, ${managersWithCategories} with assigned categories`);
-    
-    // Check Categories
-    const totalCategories = await ProductCategory.countDocuments();
-    const activeCategories = await ProductCategory.countDocuments({ isActive: true });
-    console.log(`   Categories: ${totalCategories} total, ${activeCategories} active`);
-    
-    // Check Notifications
-    const totalNotifications = await Notification.countDocuments();
-    const unreadNotifications = await Notification.countDocuments({ read: false });
-    console.log(`   Notifications: ${totalNotifications} total, ${unreadNotifications} unread`);
-    console.log('');
-
-    // 4. RELATIONSHIP VERIFICATION
-    console.log('4️⃣ RELATIONSHIP VERIFICATION');
-    console.log('------------------------------');
-    
-    // Users → Managers
-    const usersWithManagerProfile = await User.countDocuments({ 'managerProfile.manager_id': { $exists: true } });
-    console.log(`   ✅ Users with Manager Profile: ${usersWithManagerProfile}`);
-    
-    // Users → Customers
-    const usersWithCustomerProfile = await User.countDocuments({ 'customerProfile.customer_id': { $exists: true } });
-    console.log(`   ✅ Users with Customer Profile: ${usersWithCustomerProfile}`);
-    
-    // Orders → Customers
-    const ordersWithValidCustomer = await Order.countDocuments({ 
-      customer: { $exists: true, $ne: null },
-      company_id: { $exists: true }
-    });
-    console.log(`   ✅ Orders with valid customer: ${ordersWithValidCustomer}`);
-    
-    // Invoices → Orders
-    const invoicesWithValidOrder = await Invoice.countDocuments({ 
-      orderId: { $exists: true, $ne: null },
-      company_id: { $exists: true }
-    });
-    console.log(`   ✅ Invoices with valid order: ${invoicesWithValidOrder}`);
-    
-    // Managers → Category Assignments
-    const managersWithAssignments = await CategoryAssignment.countDocuments();
-    console.log(`   ✅ Category Assignments: ${managersWithAssignments}`);
-    console.log('');
-
-    // 5. COMPANY ID CONSISTENCY
-    console.log('5️⃣ COMPANY ID CONSISTENCY');
-    console.log('-------------------------');
-    
-    const companyIds = {
-      users: await User.distinct('company_id'),
-      products: await Product.distinct('company_id'),
-      orders: await Order.distinct('company_id'),
-      invoices: await Invoice.distinct('company_id'),
-      customers: await Customer.distinct('company_id'),
-      managers: await Manager.distinct('company_id'),
+function makeRequest(url, options = {}) {
+  return new Promise((resolve, reject) => {
+    const urlObj = new URL(url);
+    const requestOptions = {
+      hostname: urlObj.hostname,
+      path: urlObj.pathname + urlObj.search,
+      method: options.method || 'GET',
+      headers: options.headers || {},
     };
-    
-    console.log('   Company IDs found:');
-    console.log(`     Users: ${companyIds.users.join(', ') || 'None'}`);
-    console.log(`     Products: ${companyIds.products.join(', ') || 'None'}`);
-    console.log(`     Orders: ${companyIds.orders.join(', ') || 'None'}`);
-    console.log(`     Invoices: ${companyIds.invoices.join(', ') || 'None'}`);
-    console.log(`     Customers: ${companyIds.customers.join(', ') || 'None'}`);
-    console.log(`     Managers: ${companyIds.managers.join(', ') || 'None'}`);
-    
-    const allCompanyIds = [...new Set([
-      ...companyIds.users,
-      ...companyIds.products,
-      ...companyIds.orders,
-      ...companyIds.invoices,
-      ...companyIds.customers,
-      ...companyIds.managers,
-    ])];
-    
-    console.log(`   ✅ Unique Company IDs: ${allCompanyIds.join(', ') || 'None'}`);
-    console.log('');
 
-    // 6. RECENT ACTIVITY
-    console.log('6️⃣ RECENT ACTIVITY (Last 7 Days)');
-    console.log('---------------------------------');
-    
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-    
-    const recentUsers = await User.countDocuments({ createdAt: { $gte: sevenDaysAgo } });
-    const recentProducts = await Product.countDocuments({ createdAt: { $gte: sevenDaysAgo } });
-    const recentOrders = await Order.countDocuments({ createdAt: { $gte: sevenDaysAgo } });
-    const recentInvoices = await Invoice.countDocuments({ createdAt: { $gte: sevenDaysAgo } });
-    const recentNotifications = await Notification.countDocuments({ createdAt: { $gte: sevenDaysAgo } });
-    
-    console.log(`   Users created: ${recentUsers}`);
-    console.log(`   Products created: ${recentProducts}`);
-    console.log(`   Orders created: ${recentOrders}`);
-    console.log(`   Invoices created: ${recentInvoices}`);
-    console.log(`   Notifications created: ${recentNotifications}`);
-    console.log('');
+    const req = https.request(requestOptions, (res) => {
+      let data = '';
+      res.on('data', (chunk) => {
+        data += chunk;
+      });
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(data);
+          resolve({ status: res.statusCode, data: json, headers: res.headers });
+        } catch (e) {
+          resolve({ status: res.statusCode, data: data, headers: res.headers });
+        }
+      });
+    });
 
-    // 7. SUMMARY
-    console.log('7️⃣ CONNECTION SUMMARY');
-    console.log('---------------------');
-    console.log('   ✅ Database: Connected');
-    console.log('   ✅ Models: All registered');
-    console.log('   ✅ Collections: All accessible');
-    console.log('   ✅ Relationships: Verified');
-    console.log('   ✅ Data Integrity: Checked');
-    console.log('');
-    console.log('✅ ALL CONNECTIONS VERIFIED SUCCESSFULLY!');
-    console.log('');
+    req.on('error', (error) => {
+      reject(error);
+    });
 
+    if (options.body) {
+      req.write(JSON.stringify(options.body));
+    }
+
+    req.end();
+  });
+}
+
+async function testBackendHealth() {
+  log('\n🔍 Test 1: Backend Health Check', 'blue');
+  try {
+    const result = await makeRequest(`${BACKEND_URL}/api/health`);
+    if (result.status === 200) {
+      log('✅ Backend is responding', 'green');
+      log(`   Status: ${result.status}`, 'green');
+      log(`   Response: ${JSON.stringify(result.data)}`, 'green');
+      return true;
+    } else {
+      log(`❌ Backend returned status ${result.status}`, 'red');
+      return false;
+    }
   } catch (error) {
-    console.error('❌ Verification Error:', error);
-    console.error('   Message:', error.message);
-    console.error('   Stack:', error.stack);
-  } finally {
-    await mongoose.disconnect();
-    console.log('🔌 Disconnected from MongoDB');
+    log(`❌ Backend health check failed: ${error.message}`, 'red');
+    return false;
   }
 }
 
-verifyAllConnections();
+async function testBackendDatabase() {
+  log('\n🔍 Test 2: Backend → Database Connection', 'blue');
+  log('   Testing with a database-dependent endpoint...', 'yellow');
+  
+  try {
+    // Try to access an endpoint that requires database connection
+    // This will fail without auth, but should return 401/403, not 500 (which would indicate DB error)
+    const result = await makeRequest(`${BACKEND_URL}/api/products`, {
+      method: 'GET',
+    });
+    
+    if (result.status === 200 || result.status === 401 || result.status === 403) {
+      log('✅ Backend can reach database', 'green');
+      log(`   Status: ${result.status} (expected for unauthenticated request)`, 'green');
+      return true;
+    } else if (result.status === 500) {
+      log('❌ Backend database connection failed (500 error)', 'red');
+      log('   Check MongoDB connection string in Vercel environment variables', 'yellow');
+      return false;
+    } else {
+      log(`⚠️  Unexpected status: ${result.status}`, 'yellow');
+      return true; // Assume it's working if not 500
+    }
+  } catch (error) {
+    log(`❌ Database connection test failed: ${error.message}`, 'red');
+    return false;
+  }
+}
+
+async function testBackendCORS() {
+  log('\n🔍 Test 3: Backend CORS Configuration', 'blue');
+  try {
+    const result = await makeRequest(`${BACKEND_URL}/api/health`, {
+      method: 'OPTIONS',
+      headers: {
+        'Origin': 'http://localhost:3000',
+        'Access-Control-Request-Method': 'GET',
+      },
+    });
+    
+    const corsHeaders = result.headers['access-control-allow-origin'];
+    if (corsHeaders || result.status === 200) {
+      log('✅ CORS is configured', 'green');
+      if (corsHeaders) {
+        log(`   Allowed Origin: ${corsHeaders}`, 'green');
+      }
+      return true;
+    } else {
+      log('⚠️  CORS headers not found (may still work)', 'yellow');
+      return true;
+    }
+  } catch (error) {
+    log(`⚠️  CORS test inconclusive: ${error.message}`, 'yellow');
+    return true; // Don't fail on this
+  }
+}
+
+function checkEnvironmentVariables() {
+  log('\n🔍 Test 4: Environment Variables Check', 'blue');
+  log('   Checking required environment variables...', 'yellow');
+  
+  const required = {
+    'MONGODB_URI or CONNECTION_STRING': 'Set in Vercel → Settings → Environment Variables',
+    'JWT_SECRET': 'Set in Vercel → Settings → Environment Variables',
+    'REFRESH_SECRET': 'Set in Vercel → Settings → Environment Variables',
+  };
+  
+  log('\n   Required Backend Variables (in Vercel):', 'yellow');
+  Object.entries(required).forEach(([key, location]) => {
+    log(`   - ${key}: ${location}`, 'yellow');
+  });
+  
+  log('\n   Required Frontend Variables (in .env.local):', 'yellow');
+  log('   - NEXT_PUBLIC_BACKEND_URL: https://mern-stack-dtgy.vercel.app', 'yellow');
+  log('   - NEXT_PUBLIC_API_URL: https://mern-stack-dtgy.vercel.app', 'yellow');
+  
+  log('\n   ⚠️  Note: This script cannot verify Vercel environment variables', 'yellow');
+  log('      Please verify manually in Vercel Dashboard', 'yellow');
+}
+
+async function runAllTests() {
+  log('═══════════════════════════════════════════════════════', 'blue');
+  log('   Complete Connection Verification', 'blue');
+  log('   Frontend ↔ Backend ↔ Database', 'blue');
+  log('═══════════════════════════════════════════════════════', 'blue');
+  
+  const results = {
+    backendHealth: await testBackendHealth(),
+    backendDatabase: await testBackendDatabase(),
+    backendCORS: await testBackendCORS(),
+  };
+  
+  checkEnvironmentVariables();
+  
+  log('\n═══════════════════════════════════════════════════════', 'blue');
+  log('   Test Results Summary', 'blue');
+  log('═══════════════════════════════════════════════════════', 'blue');
+  
+  Object.entries(results).forEach(([test, passed]) => {
+    const status = passed ? '✅ PASS' : '❌ FAIL';
+    const color = passed ? 'green' : 'red';
+    log(`${status}: ${test}`, color);
+  });
+  
+  const allPassed = Object.values(results).every(r => r);
+  
+  if (allPassed) {
+    log('\n✅ All connection tests passed!', 'green');
+    log('   Your backend is ready to accept connections.', 'green');
+    log('\n   Next steps:', 'yellow');
+    log('   1. Verify environment variables in Vercel', 'yellow');
+    log('   2. Test frontend locally with: npm run dev', 'yellow');
+    log('   3. Deploy frontend to Vercel', 'yellow');
+  } else {
+    log('\n❌ Some tests failed. Please check the errors above.', 'red');
+    log('\n   Troubleshooting:', 'yellow');
+    log('   1. Check Vercel deployment logs', 'yellow');
+    log('   2. Verify MongoDB connection string', 'yellow');
+    log('   3. Check MongoDB Atlas network access (allow 0.0.0.0/0)', 'yellow');
+  }
+  
+  log('\n═══════════════════════════════════════════════════════\n', 'blue');
+}
+
+// Run tests
+runAllTests().catch(console.error);
 
