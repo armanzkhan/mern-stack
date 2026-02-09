@@ -24,23 +24,23 @@ function initializeApp() {
     res.json({ status: 'ok', route: '/api/health/test', time: new Date().toISOString() })
   );
 
-  // Import and mount all routes
+  // Import and mount all routes from backend folder
   try {
-    const authRoutes = require('../routes/authRoutes');
-    const userRoutes = require('../routes/userRoutes');
-    const companyRoutes = require('../routes/companyRoutes');
-    const customerRoutes = require('../routes/customerRoutes');
-    const orderRoutes = require('../routes/orderRoutes');
-    const productRoutes = require('../routes/productRoutes');
-    const roleRoutes = require('../routes/roleRoutes');
-    const permissionRoutes = require('../routes/permissionRoutes');
-    const permissionGroupRoutes = require('../routes/permissionGroupRoutes');
-    const notificationRoutes = require('../routes/notificationRoutes');
-    const managerRoutes = require('../routes/managerRoutes');
-    const categoryRoutes = require('../routes/categoryRoutes');
-    const invoiceRoutes = require('../routes/invoiceRoutes');
-    const customerLedgerRoutes = require('../routes/customerLedgerRoutes');
-    const productImageRoutes = require('../routes/productImageRoutes');
+    const authRoutes = require('../backend/routes/authRoutes');
+    const userRoutes = require('../backend/routes/userRoutes');
+    const companyRoutes = require('../backend/routes/companyRoutes');
+    const customerRoutes = require('../backend/routes/customerRoutes');
+    const orderRoutes = require('../backend/routes/orderRoutes');
+    const productRoutes = require('../backend/routes/productRoutes');
+    const roleRoutes = require('../backend/routes/roleRoutes');
+    const permissionRoutes = require('../backend/routes/permissionRoutes');
+    const permissionGroupRoutes = require('../backend/routes/permissionGroupRoutes');
+    const notificationRoutes = require('../backend/routes/notificationRoutes');
+    const managerRoutes = require('../backend/routes/managerRoutes');
+    const categoryRoutes = require('../backend/routes/categoryRoutes');
+    const invoiceRoutes = require('../backend/routes/invoiceRoutes');
+    const customerLedgerRoutes = require('../backend/routes/customerLedgerRoutes');
+    const productImageRoutes = require('../backend/routes/productImageRoutes');
 
     // Mount all routes
     app.use('/api/auth', authRoutes);
@@ -183,16 +183,8 @@ module.exports = async (req, res) => {
               res.status(500).json({ error: err.message || 'Internal server error' });
             }
           }
-          // If no error and response not sent, Express should handle it
-          // But ensure we resolve after a short delay if nothing happened
-          if (!finished) {
-            setTimeout(() => {
-              if (!finished && !res.headersSent) {
-                finish();
-                res.status(500).json({ error: 'No response from Express' });
-              }
-            }, 100);
-          }
+          // If no error and response not sent, Express should handle it.
+          // The outer timeout will handle true hangs.
         });
       } catch (err) {
         console.error('❌ Error calling Express app:', err);
