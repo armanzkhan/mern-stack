@@ -55,8 +55,26 @@ async function register(req, res) {
 // ================= LOGIN =================
 async function login(req, res) {
   try {
-    const { email, password } = req.body;
-    const user = await User.findOne({ email })
+    const { identifier, email, phone, password } = req.body;
+    const loginIdRaw = (identifier || email || phone || "").trim();
+    const passwordValue = typeof password === "string" ? password.trim() : password;
+    const loginId = loginIdRaw.includes("@") ? loginIdRaw.toLowerCase() : loginIdRaw;
+    if (!loginId || !passwordValue) {
+      return res.status(400).json({ success: false, message: "Email/phone and password are required" });
+    }
+
+    const isEmail = loginId.includes("@");
+    const normalizedPhone = loginId.replace(/[^\d+]/g, "");
+    const phoneCandidates = [loginId];
+    if (normalizedPhone && normalizedPhone !== loginId) {
+      phoneCandidates.push(normalizedPhone);
+    }
+
+    const query = isEmail
+      ? { email: loginId }
+      : { $or: [{ phone: { $in: phoneCandidates } }, { email: loginId }] };
+
+    const user = await User.findOne(query)
       .populate({
         path: 'roles',
         populate: {
@@ -73,7 +91,7 @@ async function login(req, res) {
       permissions: user.permissions
     });
 
-    const validPassword = await bcrypt.compare(password, user.password);
+    const validPassword = await bcrypt.compare(passwordValue, user.password);
     if (!validPassword)
       return res.status(401).json({ success: false, message: "Invalid credentials" });
 
