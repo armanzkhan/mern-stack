@@ -1,0 +1,332 @@
+// controllers/authController.js
+const bcrypt = require("bcryptjs");
+const User = require("../models/User");
+const { generateToken, verifyRefreshToken } = require("../services/authService");
+const notificationService = require("../services/notificationService");
+const Notification = require("../models/Notification");
+
+// ================= REGISTER =================
+async function register(req, res) {
+  try {
+    const { company_id, user_id, email, password, department } = req.body;
+
+    const existingUser = await User.findOne({ email });
+    if (existingUser)
+      return res.status(400).json({ success: false, message: "Email already exists" });
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const newUser = new User({
+      company_id,
+      user_id,
+      email,
+      password: hashedPassword,
+      department,
+      roles: []
+    });
+
+    await newUser.save();
+
+    // Send notification about new user
+    try {
+      await notificationService.createNotification({
+        title: "New User Registered",
+        message: `A new user ${email} has been registered in the system`,
+        type: "system",
+        priority: "medium",
+        targetType: "company",
+        targetIds: [company_id],
+        company_id,
+        sender_id: "system",
+        sender_name: "System",
+        channels: ["in_app", "web_push"]
+      });
+    } catch (notificationError) {
+      console.error("Notification error:", notificationError);
+    }
+
+    return res.status(201).json({ success: true, message: "User registered successfully" });
+  } catch (err) {
+    console.error("Register error:", err);
+    return res.status(500).json({ success: false, message: "Server error" });
+  }
+}
+
+// ================= LOGIN =================
+async function login(req, res) {
+  try {
+    const { identifier, email, phone, password } = req.body;
+    const loginIdRaw = (identifier || email || phone || "").trim();
+    const passwordValue = typeof password === "string" ? password.trim() : password;
+    const loginId = loginIdRaw.includes("@") ? loginIdRaw.toLowerCase() : loginIdRaw;
+    if (!loginId || !passwordValue) {
+      return res.status(400).json({ success: false, message: "Email/phone and password are required" });
+    }
+
+    const isEmail = loginId.includes("@");
+    const normalizedPhone = loginId.replace(/[^\d+]/g, "");
+    const phoneCandidates = [loginId];
+    if (normalizedPhone && normalizedPhone !== loginId) {
+      phoneCandidates.push(normalizedPhone);
+    }
+
+    const query = isEmail
+      ? { email: loginId }
+      : { $or: [{ phone: { $in: phoneCandidates } }, { email: loginId }] };
+
+    const user = await User.findOne(query)
+      .populate({
+        path: 'roles',
+        populate: {
+          path: 'permissions'
+        }
+      })
+      .populate("permissions");
+    if (!user)
+      return res.status(404).json({ success: false, message: "User not found" });
+
+    console.log("🔍 User found:", {
+      email: user.email,
+      roles: user.roles,
+      permissions: user.permissions
+    });
+
+    const validPassword = await bcrypt.compare(passwordValue, user.password);
+    if (!validPassword)
+      return res.status(401).json({ success: false, message: "Invalid credentials" });
+
+    // Validate required fields for token generation
+    if (!user.user_id) {
+      console.error("❌ User missing user_id:", user.email);
+      return res.status(500).json({ success: false, message: "User data incomplete: missing user_id" });
+    }
+    if (!user.company_id) {
+      console.error("❌ User missing company_id:", user.email);
+      return res.status(500).json({ success: false, message: "User data incomplete: missing company_id" });
+    }
+
+    // ✅ Check if user is super admin
+    const isSuperAdmin = user.isSuperAdmin === true || 
+                        user.user_id === "super_admin_001" ||
+                        user.email === "superadmin@ressichem.com" ||
+                        (user.roles && user.roles.some(r => r && r.name === "Super Admin"));
+
+    console.log("🔑 Generating tokens for user:", {
+      email: user.email,
+      user_id: user.user_id,
+      company_id: user.company_id,
+      isSuperAdmin
+    });
+
+    let token, refreshToken;
+    try {
+      token = await generateToken(user, "15m");
+      refreshToken = await generateToken(user, "7d", true);
+      console.log("✅ Tokens generated successfully");
+    } catch (tokenError) {
+      console.error("❌ Token generation error:", tokenError);
+      console.error("Token error stack:", tokenError.stack);
+      throw tokenError; // Re-throw to be caught by outer catch
+    }
+
+    // Determine user type for frontend routing
+    let userType = 'user';
+    if (isSuperAdmin) {
+      userType = 'admin';
+    } else if (user.isCompanyAdmin) {
+      userType = 'company_admin';
+    } else if (user.isCustomer) {
+      userType = 'customer';
+    } else if (user.isManager) {
+      userType = 'manager';
+    }
+
+    return res.json({
+      success: true,
+      message: "Login successful",
+      token,
+      refreshToken,
+      user: {
+        _id: user._id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        role: user.role,
+        department: user.department,
+        isSuperAdmin,
+        isCompanyAdmin: user.isCompanyAdmin,
+        isCustomer: user.isCustomer,
+        isManager: user.isManager,
+        userType,
+        company_id: user.company_id,
+        permissions: user.permissions?.map(p => p.key || p) || [],
+        roles: user.roles?.map(r => r.name || r) || []
+      }
+    });
+  } catch (err) {
+    console.error("Login error:", err);
+    console.error("Error stack:", err.stack);
+    console.error("Error details:", {
+      message: err.message,
+      name: err.name,
+      code: err.code
+    });
+    // Always include error message in response for debugging
+    return res.status(500).json({ 
+      success: false, 
+      message: "Server error",
+      error: err.message || "Unknown error",
+      details: process.env.NODE_ENV === 'development' ? {
+        name: err.name,
+        stack: err.stack
+      } : undefined
+    });
+  }
+}
+
+// ================= REFRESH TOKEN =================
+async function refresh(req, res) {
+  try {
+    const { refreshToken } = req.body;
+    if (!refreshToken)
+      return res.status(401).json({ success: false, message: "No refresh token provided" });
+
+    let decoded;
+    try {
+      decoded = verifyRefreshToken(refreshToken);
+    } catch (err) {
+      console.error("Invalid refresh token:", err);
+      return res.status(403).json({ success: false, message: "Invalid refresh token" });
+    }
+
+    const user = await User.findOne({ user_id: decoded.user_id, company_id: decoded.company_id })
+      .populate({
+        path: 'roles',
+        populate: {
+          path: 'permissions'
+        }
+      })
+      .populate("permissions");
+    if (!user)
+      return res.status(404).json({ success: false, message: "User not found" });
+
+    // ✅ Check if user is super admin
+    const isSuperAdmin = user.isSuperAdmin === true || 
+                        user.user_id === "super_admin_001" ||
+                        user.email === "superadmin@ressichem.com" ||
+                        user.roles.some(r => r.name === "Super Admin");
+
+    const newToken = await generateToken(user, "15m");
+    return res.json({ success: true, token: newToken });
+  } catch (err) {
+    console.error("Refresh error:", err);
+    return res.status(500).json({ success: false, message: "Server error" });
+  }
+}
+
+// ================= CURRENT USER =================
+async function getCurrentUser(req, res) {
+  try {
+    const { user_id, company_id } = req.user;
+
+    const user = await User.findOne({ user_id, company_id })
+      .select("-password")
+      .populate({
+        path: "roles",
+        populate: {
+          path: "permissions",
+          model: "Permission"
+        }
+      })
+      .populate("permissions")
+      .lean();
+
+    if (!user)
+      return res.status(404).json({ success: false, message: "User not found" });
+
+    // ✅ Check both database flag and role-based super admin
+    const isSuperAdmin = user.isSuperAdmin === true || 
+                        user.user_id === "super_admin_001" ||
+                        user.email === "superadmin@ressichem.com" ||
+                        user.roles.some(r => r.name === "Super Admin");
+
+    const roleNames = user.roles.map(r => r.name);
+    
+    // ✅ Get permissions from roles
+    let rolePermissions = user.roles.flatMap(r => r.permissions || []);
+    let permissionGroups = user.roles.flatMap(r => r.permissionGroups || []);
+    
+    // ✅ Get direct permissions assigned to user
+    let directPermissions = user.permissions || [];
+    
+    // ✅ Combine role permissions and direct permissions
+    let permissions = [...rolePermissions, ...directPermissions];
+    
+    // ✅ Remove duplicates and filter out null/undefined values
+    permissions = [...new Set(permissions)].filter(p => p && p !== null && p !== undefined);
+
+    // ✅ For super admin, get all permissions from database
+    if (isSuperAdmin) {
+      const Permission = require("../models/Permission");
+      const allPermissions = await Permission.find({});
+      permissions = allPermissions.map(p => p.key);
+      permissionGroups = ["All"];
+      roleNames.push("Super Admin");
+    }
+
+    const notifications = await Notification.find({
+      $or: [
+        { targetIds: { $in: [user_id] } },
+        { targetIds: { $in: [company_id] } }
+      ],
+      company_id
+    })
+      .sort({ createdAt: -1 })
+      .limit(10)
+      .lean();
+
+    // Check if user is a manager
+    const isManager = user.isManager || false;
+    let managerProfile = null;
+    
+    if (isManager && user.managerProfile) {
+      managerProfile = user.managerProfile;
+    }
+
+    // Check if user is a customer
+    const isCustomer = user.isCustomer || false;
+    let customerProfile = null;
+    
+    if (isCustomer && user.customerProfile) {
+      customerProfile = user.customerProfile;
+    }
+
+    // Check if user is a company admin
+    const isCompanyAdmin = user.isCompanyAdmin || false;
+
+    res.json({
+      success: true,
+      data: {
+        user_id: user.user_id,
+        email: user.email,
+        company_id: user.company_id,
+        department: user.department,
+        isSuperAdmin, // ✅ fixed line
+        isManager,
+        isCustomer,
+        isCompanyAdmin,
+        managerProfile,
+        customerProfile,
+        roles: roleNames,
+        permissions: permissions.map(p => typeof p === 'string' ? p : p.key),
+        permissionGroups: [...new Set(permissionGroups)],
+        notifications
+      }
+    });
+  } catch (error) {
+    console.error("Get current user error:", error);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+}
+
+module.exports = { register, login, refresh, getCurrentUser };
