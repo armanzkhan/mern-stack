@@ -97,14 +97,14 @@ module.exports = async (req, res) => {
     // Initialize Express app
     const expressApp = initializeApp();
     
-    // Connect to database (with shorter timeout for faster failure)
+    // Connect to database (allow longer on cold starts)
     console.log('🔍 Connecting to database...');
     let dbConnected = false;
     try {
       await Promise.race([
         connectToDatabase(),
-        new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Database connection timeout')), 3000)
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Database connection timeout')), 8000)
         )
       ]);
       dbConnected = true;
@@ -135,15 +135,15 @@ module.exports = async (req, res) => {
     return new Promise((resolve) => {
       let finished = false;
       
-      // Set timeout (7 seconds to leave buffer)
+      // Set timeout (20 seconds to allow cold starts)
       const timeout = setTimeout(() => {
         if (!finished && !res.headersSent) {
           finished = true;
-          console.error('❌ Request timeout after 7s');
+          console.error('❌ Request timeout after 20s');
           res.status(504).json({ error: 'Request timeout' });
           resolve();
         }
-      }, 7000);
+      }, 20000);
 
       // Track when response is sent
       const finish = () => {
