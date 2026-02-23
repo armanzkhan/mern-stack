@@ -96,11 +96,16 @@ router.get("/test", async (req, res) => {
   }
 });
 
-// List users by company (with auth)
+// List users by company (with auth) - match company_id case-insensitively so RESSICHEM / Ressichem both work
 router.get("/", auth, async (req, res) => {
   try {
-    const companyId = req.query.company_id || req.user.company_id;
-    const users = await User.find({ company_id: companyId }).select("-password");
+    const raw = req.query.company_id || req.user.company_id;
+    const companyId = (typeof raw === "string" ? raw.trim() : "") || req.user.company_id;
+    if (!companyId) {
+      return res.status(400).json({ message: "company_id required" });
+    }
+    const regex = new RegExp(`^${companyId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i");
+    const users = await User.find({ company_id: regex }).select("-password");
     res.json(users);
   } catch (e) {
     res.status(400).json({ message: e.message });

@@ -111,11 +111,7 @@ async function generateToken(user, expiresIn = "1h", isRefresh = false) {
 }
 
 function verifyRefreshToken(token) {
-  try {
-    return jwt.verify(token, REFRESH_SECRET);
-  } catch (err) {
-    return null;
-  }
+  return jwt.verify(token, REFRESH_SECRET);
 }
 
 module.exports = { getUserPermissions, generateToken, verifyRefreshToken };

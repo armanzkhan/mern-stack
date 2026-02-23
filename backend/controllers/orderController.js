@@ -49,9 +49,8 @@ exports.createOrder = async (req, res) => {
       });
     }
 
-    // Tax removed - no longer calculating tax
-    const tax = 0;
-    const total = subtotal; // Total equals subtotal (no tax)
+    const tax = subtotal * 0.1; // ✅ example 10% tax
+    const total = subtotal + tax;
 
     // Generate unique order number
     const orderNumber = `ORD-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;

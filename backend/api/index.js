@@ -24,23 +24,23 @@ function initializeApp() {
     res.json({ status: 'ok', route: '/api/health/test', time: new Date().toISOString() })
   );
 
-  // Import and mount all routes from backend folder
+  // Import and mount all routes
   try {
-    const authRoutes = require('../backend/routes/authRoutes');
-    const userRoutes = require('../backend/routes/userRoutes');
-    const companyRoutes = require('../backend/routes/companyRoutes');
-    const customerRoutes = require('../backend/routes/customerRoutes');
-    const orderRoutes = require('../backend/routes/orderRoutes');
-    const productRoutes = require('../backend/routes/productRoutes');
-    const roleRoutes = require('../backend/routes/roleRoutes');
-    const permissionRoutes = require('../backend/routes/permissionRoutes');
-    const permissionGroupRoutes = require('../backend/routes/permissionGroupRoutes');
-    const notificationRoutes = require('../backend/routes/notificationRoutes');
-    const managerRoutes = require('../backend/routes/managerRoutes');
-    const categoryRoutes = require('../backend/routes/categoryRoutes');
-    const invoiceRoutes = require('../backend/routes/invoiceRoutes');
-    const customerLedgerRoutes = require('../backend/routes/customerLedgerRoutes');
-    const productImageRoutes = require('../backend/routes/productImageRoutes');
+    const authRoutes = require('../routes/authRoutes');
+    const userRoutes = require('../routes/userRoutes');
+    const companyRoutes = require('../routes/companyRoutes');
+    const customerRoutes = require('../routes/customerRoutes');
+    const orderRoutes = require('../routes/orderRoutes');
+    const productRoutes = require('../routes/productRoutes');
+    const roleRoutes = require('../routes/roleRoutes');
+    const permissionRoutes = require('../routes/permissionRoutes');
+    const permissionGroupRoutes = require('../routes/permissionGroupRoutes');
+    const notificationRoutes = require('../routes/notificationRoutes');
+    const managerRoutes = require('../routes/managerRoutes');
+    const categoryRoutes = require('../routes/categoryRoutes');
+    const invoiceRoutes = require('../routes/invoiceRoutes');
+    const customerLedgerRoutes = require('../routes/customerLedgerRoutes');
+    const productImageRoutes = require('../routes/productImageRoutes');
 
     // Mount all routes
     app.use('/api/auth', authRoutes);
@@ -97,14 +97,14 @@ module.exports = async (req, res) => {
     // Initialize Express app
     const expressApp = initializeApp();
     
-    // Connect to database (allow longer on cold starts)
+    // Connect to database (with shorter timeout for faster failure)
     console.log('🔍 Connecting to database...');
     let dbConnected = false;
     try {
       await Promise.race([
         connectToDatabase(),
-        new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Database connection timeout')), 8000)
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Database connection timeout')), 3000)
         )
       ]);
       dbConnected = true;
@@ -135,15 +135,15 @@ module.exports = async (req, res) => {
     return new Promise((resolve) => {
       let finished = false;
       
-      // Set timeout (20 seconds to allow cold starts)
+      // Set timeout (7 seconds to leave buffer)
       const timeout = setTimeout(() => {
         if (!finished && !res.headersSent) {
           finished = true;
-          console.error('❌ Request timeout after 20s');
+          console.error('❌ Request timeout after 7s');
           res.status(504).json({ error: 'Request timeout' });
           resolve();
         }
-      }, 20000);
+      }, 7000);
 
       // Track when response is sent
       const finish = () => {
@@ -183,8 +183,16 @@ module.exports = async (req, res) => {
               res.status(500).json({ error: err.message || 'Internal server error' });
             }
           }
-          // If no error and response not sent, Express should handle it.
-          // The outer timeout will handle true hangs.
+          // If no error and response not sent, Express should handle it
+          // But ensure we resolve after a short delay if nothing happened
+          if (!finished) {
+            setTimeout(() => {
+              if (!finished && !res.headersSent) {
+                finish();
+                res.status(500).json({ error: 'No response from Express' });
+              }
+            }, 100);
+          }
         });
       } catch (err) {
         console.error('❌ Error calling Express app:', err);
