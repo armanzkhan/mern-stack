@@ -511,8 +511,8 @@ function ManagersPage() {
 
   // Handle URL parameters
   useEffect(() => {
-    const action = searchParams.get('action');
-    const tab = searchParams.get('tab');
+    const action = searchParams?.get('action');
+    const tab = searchParams?.get('tab');
     
     if (action === 'assign' && managers.length > 0) {
       setShowManagerSelectModal(true);

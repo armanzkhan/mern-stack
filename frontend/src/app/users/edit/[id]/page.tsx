@@ -24,7 +24,7 @@ interface User {
 export default function EditUser() {
   const router = useRouter();
   const params = useParams();
-  const userId = params.id as string;
+  const userId = params?.id as string | undefined;
 
   const [formData, setFormData] = useState({
     firstName: "",
@@ -52,6 +52,7 @@ export default function EditUser() {
 
   useEffect(() => {
     const fetchUser = async () => {
+      if (!userId) return;
       try {
         const response = await fetch(`/api/users/${userId}`, {
           headers: getAuthHeaders(),
@@ -88,6 +89,7 @@ export default function EditUser() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!userId) return;
     setLoading(true);
     setMessage("");
 
@@ -121,6 +123,24 @@ export default function EditUser() {
   const handleInputChange = (field: string, value: string | boolean) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
+
+  if (!userId) {
+    return (
+      <ProtectedRoute requiredPermission="users.read">
+        <div className="flex items-center justify-center min-h-screen">
+          <div className="text-center">
+            <h2 className="text-2xl font-bold text-dark dark:text-white mb-4">Invalid User</h2>
+            <button
+              onClick={() => router.push("/users")}
+              className="inline-flex items-center justify-center rounded-lg bg-primary px-6 py-3 text-center font-medium text-white hover:bg-opacity-90"
+            >
+              Back to Users
+            </button>
+          </div>
+        </div>
+      </ProtectedRoute>
+    );
+  }
 
   // While fetching initial data, show a loading spinner
   if (!initialized) {

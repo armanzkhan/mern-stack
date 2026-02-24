@@ -23,7 +23,7 @@ interface Customer {
 export default function EditCustomer() {
   const router = useRouter();
   const params = useParams();
-  const customerId = params.id as string;
+  const customerId = params?.id as string | undefined;
 
   const [formData, setFormData] = useState({
     companyName: "",
@@ -43,6 +43,7 @@ export default function EditCustomer() {
 
   useEffect(() => {
     const fetchCustomer = async () => {
+      if (!customerId) return;
       try {
         const response = await fetch(`/api/customers/${customerId}`);
         if (response.ok) {
@@ -76,6 +77,7 @@ export default function EditCustomer() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!customerId) return;
     setLoading(true);
     setMessage("");
 
@@ -108,6 +110,24 @@ export default function EditCustomer() {
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
+
+  if (!customerId) {
+    return (
+      <ProtectedRoute requiredPermission="customers.read">
+        <div className="flex items-center justify-center min-h-screen">
+          <div className="text-center">
+            <h2 className="text-2xl font-bold text-dark dark:text-white mb-4">Invalid Customer</h2>
+            <button
+              onClick={() => router.push("/customers")}
+              className="inline-flex items-center justify-center rounded-lg bg-primary px-6 py-3 text-center font-medium text-white hover:bg-opacity-90"
+            >
+              Back to Customers
+            </button>
+          </div>
+        </div>
+      </ProtectedRoute>
+    );
+  }
 
   if (!customer) {
     return (

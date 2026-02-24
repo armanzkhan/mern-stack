@@ -21,7 +21,7 @@ interface Company {
 export default function EditCompany() {
   const router = useRouter();
   const params = useParams();
-  const companyId = params.id as string;
+  const companyId = params?.id as string | undefined;
 
   const [formData, setFormData] = useState({
     company_id: "",
@@ -39,6 +39,7 @@ export default function EditCompany() {
 
   useEffect(() => {
     const fetchCompany = async () => {
+      if (!companyId) return;
       try {
         const response = await fetch(`/api/companies/${companyId}`);
         if (response.ok) {
@@ -69,6 +70,7 @@ export default function EditCompany() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!companyId) return;
     setLoading(true);
     setMessage("");
 
@@ -118,6 +120,24 @@ export default function EditCompany() {
       departments: prev.departments.filter(d => d !== department)
     }));
   };
+
+  if (!companyId) {
+    return (
+      <ProtectedRoute requiredPermission="companies.read">
+        <div className="flex items-center justify-center min-h-screen">
+          <div className="text-center">
+            <h2 className="text-2xl font-bold text-dark dark:text-white mb-4">Invalid Company</h2>
+            <button
+              onClick={() => router.push("/companies")}
+              className="inline-flex items-center justify-center rounded-lg bg-primary px-6 py-3 text-center font-medium text-white hover:bg-opacity-90"
+            >
+              Back to Companies
+            </button>
+          </div>
+        </div>
+      </ProtectedRoute>
+    );
+  }
 
   if (!company) {
     return (

@@ -54,7 +54,7 @@ export function PeriodPicker<TItem extends string>({
                   const queryString = createQueryString({
                     sectionKey,
                     value: item,
-                    selectedTimeFrame: searchParams.get(PARAM_KEY),
+                    selectedTimeFrame: searchParams?.get(PARAM_KEY) ?? null,
                   });
 
                   router.push(pathname + queryString, {

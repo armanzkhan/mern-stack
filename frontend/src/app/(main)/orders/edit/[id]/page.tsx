@@ -56,10 +56,11 @@ export default function EditOrderPage() {
   });
   const router = useRouter();
   const params = useParams();
-  const orderId = params.id as string;
+  const orderId = params?.id as string | undefined;
 
   // Fetch order, customers and products
   const fetchData = async () => {
+    if (!orderId) return;
     try {
       setLoading(true);
       
@@ -172,6 +173,7 @@ export default function EditOrderPage() {
   // Handle form submission
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!orderId) return;
     setSubmitting(true);
     setMessage("");
 
@@ -211,6 +213,22 @@ export default function EditOrderPage() {
       setSubmitting(false);
     }
   };
+
+  if (!orderId) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold text-dark dark:text-white mb-4">Invalid Order</h2>
+          <button
+            onClick={() => router.push('/orders')}
+            className="inline-flex items-center justify-center rounded-lg bg-primary px-6 py-3 text-center font-medium text-white hover:bg-opacity-90"
+          >
+            Back to Orders
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (

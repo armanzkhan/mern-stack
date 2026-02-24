@@ -177,7 +177,7 @@ function OrdersPageContent() {
 
   // Handle highlight parameter from URL
   useEffect(() => {
-    const highlightId = searchParams.get('highlight');
+    const highlightId = searchParams?.get('highlight');
     if (highlightId) {
       setHighlightedOrderId(highlightId);
       // Scroll to the highlighted order after a short delay to ensure orders are loaded

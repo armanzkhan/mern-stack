@@ -25,7 +25,8 @@ interface Role {
 }
 
 export default function EditRole() {
-  const { id } = useParams();
+  const params = useParams();
+  const id = params?.id as string | undefined;
   const router = useRouter();
 
   const [role, setRole] = useState<Role | null>(null);
@@ -46,6 +47,7 @@ export default function EditRole() {
   // ✅ Fetch role and permissions
   useEffect(() => {
     const fetchData = async () => {
+      if (!id) return;
       setLoading(true);
       setError("");
 
@@ -92,6 +94,7 @@ export default function EditRole() {
   // ✅ Handle submit
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!id) return;
 
     try {
       const headers = getAuthHeaders();
@@ -117,6 +120,15 @@ export default function EditRole() {
       setError(err.message || "Error updating role");
     }
   };
+
+  if (!id) {
+    return (
+      <div className="p-6">
+        <p className="text-gray-500">Invalid role.</p>
+        <button onClick={() => router.push("/roles")} className="mt-2 text-primary hover:underline">Back to Roles</button>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
