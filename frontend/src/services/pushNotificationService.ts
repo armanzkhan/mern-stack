@@ -183,14 +183,18 @@ class PushNotificationService {
         return null;
       }
 
-      // Convert VAPID key to Uint8Array
-      const applicationServerKey = this.urlBase64ToUint8Array(vapidPublicKey);
+      // Convert VAPID key to Uint8Array; pass as ArrayBuffer for Push API (type assertion for strict BufferSource)
+      const keyArray = this.urlBase64ToUint8Array(vapidPublicKey);
+      const applicationServerKey = keyArray.buffer.slice(
+        keyArray.byteOffset,
+        keyArray.byteOffset + keyArray.byteLength
+      ) as ArrayBuffer;
 
       // Subscribe to push notifications with error handling
       try {
         this.subscription = await this.registration.pushManager.subscribe({
           userVisibleOnly: true,
-          applicationServerKey: applicationServerKey
+          applicationServerKey
         });
       } catch (subscribeError) {
         console.error('Push subscription failed:', subscribeError);
