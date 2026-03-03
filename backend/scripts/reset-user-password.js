@@ -1,10 +1,11 @@
 /**
  * Reset a user's password by email.
+ * Uses same DB as app (MONGODB_DB_NAME or Testing).
  *
- * Run:
- *   cd Ressichem/backend/backend
- *   node scripts/reset-user-password.js "velcommoditiessingaporepteltd@gmail.com" "NewPassword@123"
+ * Run from backend:
+ *   node scripts/reset-user-password.js "user@example.com" "NewPassword123"
  */
+require("dotenv").config({ path: require("path").resolve(__dirname, "../.env") });
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 const User = require("../models/User");
@@ -18,12 +19,17 @@ if (!emailArg || !passwordArg) {
 }
 
 const uri =
-  process.env.CONNECTION_STRING ||
+  process.env.CONNECTION_STRING?.trim() ||
   process.env.MONGODB_URI ||
-  "mongodb+srv://armanzaman4_db_user:1JJORz7jP2VFgTaP@cluster0.qn1babq.mongodb.net/Ressichem?retryWrites=true&w=majority";
+  "";
+const dbName = process.env.MONGODB_DB_NAME || "Testing";
 
 async function run() {
-  await mongoose.connect(uri, { dbName: "Ressichem" });
+  if (!uri) {
+    console.error("❌ Set CONNECTION_STRING or MONGODB_URI in backend/.env");
+    process.exit(1);
+  }
+  await mongoose.connect(uri, { dbName });
   const email = String(emailArg).toLowerCase();
 
   const user = await User.findOne({ email });

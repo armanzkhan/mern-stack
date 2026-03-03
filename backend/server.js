@@ -41,7 +41,8 @@ try {
 app.use("/uploads", express.static(uploadsRoot));
 
 // ===== MongoDB Connection =====
-const defaultUri = "mongodb+srv://armanzaman4_db_user:1JJORz7jP2VFgTaP@cluster0.qn1babq.mongodb.net/Ressichem?retryWrites=true&w=majority";
+const dbName = process.env.MONGODB_DB_NAME || "Testing";
+const defaultUri = "mongodb+srv://armanzaman4_db_user:1JJORz7jP2VFgTaP@cluster0.qn1babq.mongodb.net/Testing?retryWrites=true&w=majority";
 const envUri = process.env.CONNECTION_STRING ? process.env.CONNECTION_STRING.trim() : "";
 const mongoUri = envUri && envUri.length > 0 ? envUri : defaultUri;
 
@@ -53,9 +54,9 @@ mongoose
   .connect(mongoUri, {
     useNewUrlParser: true,
     useUnifiedTopology: true,
-    dbName: "Ressichem", // Ensure correct DB casing
+    dbName,
   })
-  .then(() => console.log("✅ MongoDB connected to 'Ressichem' database"))
+  .then(() => console.log(`✅ MongoDB connected to '${dbName}' database`))
   .catch((err) => {
     console.error("❌ MongoDB connection error:", err.message);
     console.error("❌ Connection string length:", mongoUri.length);

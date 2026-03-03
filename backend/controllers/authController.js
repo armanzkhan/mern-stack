@@ -64,10 +64,16 @@ async function login(req, res) {
     }
 
     const isEmail = loginId.includes("@");
-    const normalizedPhone = loginId.replace(/[^\d+]/g, "");
+    const digitsOnly = loginId.replace(/\D/g, "");
     const phoneCandidates = [loginId];
-    if (normalizedPhone && normalizedPhone !== loginId) {
-      phoneCandidates.push(normalizedPhone);
+    if (digitsOnly) {
+      phoneCandidates.push(digitsOnly);
+      if (digitsOnly.startsWith("0") && digitsOnly.length > 1)
+        phoneCandidates.push(digitsOnly.slice(1));
+      if (digitsOnly.length >= 10 && !digitsOnly.startsWith("92"))
+        phoneCandidates.push("92" + (digitsOnly.startsWith("0") ? digitsOnly.slice(1) : digitsOnly));
+      if (digitsOnly.startsWith("92"))
+        phoneCandidates.push("0" + digitsOnly.slice(2));
     }
 
     const query = isEmail

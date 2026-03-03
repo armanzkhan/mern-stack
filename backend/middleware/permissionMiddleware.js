@@ -48,28 +48,73 @@ function permissionMiddleware(requiredPermissions = []) {
       return next();
     }
 
+    // Customer users (portal): allow orders and related permissions even if they have no Role in DB
+    const customerAllowedPermissions = [
+      "orders.create",
+      "orders.read",
+      "orders.update",
+      "products.read",
+      "profile.update",
+      "notifications.read",
+      "invoices.read",
+    ];
+    const allowedForCustomers = requiredPermissions.every((p) => customerAllowedPermissions.includes(p));
+    let isCustomer = req.user.isCustomer === true;
+
+    if (!isCustomer && allowedForCustomers) {
+      try {
+        const User = require("../models/User");
+        const mongoose = require("mongoose");
+        let dbUser = null;
+        if (req.user.user_id && req.user.company_id) {
+          dbUser = await User.findOne({
+            user_id: req.user.user_id,
+            company_id: new RegExp(`^${String(req.user.company_id).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i"),
+          }).select("isCustomer role");
+        }
+        if (!dbUser && req.user._id && mongoose.Types.ObjectId.isValid(req.user._id)) {
+          dbUser = await User.findById(req.user._id).select("isCustomer role");
+        }
+        if (!dbUser && req.user.email) {
+          dbUser = await User.findOne({
+            email: req.user.email,
+            ...(req.user.company_id && { company_id: new RegExp(`^${String(req.user.company_id).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i") }),
+          }).select("isCustomer role");
+        }
+        isCustomer =
+          dbUser &&
+          (dbUser.isCustomer === true ||
+            (dbUser.role && String(dbUser.role).toLowerCase() === "customer"));
+        if (isCustomer) console.log("🔍 Customer status from database: true");
+      } catch (e) {
+        console.error("⚠️ Error checking customer in DB:", e.message);
+      }
+    }
+
+    if (isCustomer && allowedForCustomers) {
+      console.log("✅ Customer user granted access to:", requiredPermissions);
+      return next();
+    }
+
     const headerCompany = req.headers["x-company-id"];
     if (headerCompany && headerCompany !== req.user.company_id) {
       return res.status(403).json({ message: "Forbidden: Company scope mismatch" });
     }
 
     const userPermissions = req.user.permissions || [];
-    
-    // Extract permission keys from permission objects
-    const userPermissionKeys = userPermissions.map(perm => {
-      if (typeof perm === 'string') return perm;
+
+    const userPermissionKeys = userPermissions.map((perm) => {
+      if (typeof perm === "string") return perm;
       if (perm && perm.key) return perm.key;
       return null;
-    }).filter(key => key !== null);
-    
+    }).filter((key) => key !== null);
+
     console.log("🔑 User permission keys:", userPermissionKeys);
-    
-    const hasPermission = requiredPermissions.every((p) =>
-      userPermissionKeys.includes(p)
-    );
+
+    const hasPermission = requiredPermissions.every((p) => userPermissionKeys.includes(p));
     if (!hasPermission) {
-      return res.status(403).json({ 
-        message: `Permission Denied: You do not have permission to ${requiredPermissions.join(', ')}. Please contact an administrator.` 
+      return res.status(403).json({
+        message: `Permission Denied: You do not have permission to ${requiredPermissions.join(", ")}. Please contact an administrator.`,
       });
     }
 
