@@ -888,12 +888,31 @@ function OrdersPageContent() {
                       <div className="flex justify-center">
                         <PermissionGate permission="orders.update">
                           <select
-                            value={order.status}
-                            onChange={(e) => handleStatusChange(order._id, e.target.value)}
+                            value={
+                              // For managers we only allow selecting "processing" or "rejected".
+                              // If the current order status is "processing" (or anything else like "pending"),
+                              // we show a placeholder instead of forcing "processing" to be pre-selected.
+                              user?.isManager &&
+                              !user?.isCompanyAdmin &&
+                              !user?.isSuperAdmin
+                                ? String(order?.status || "").toLowerCase() === "rejected"
+                                  ? "rejected"
+                                  : ""
+                                : order.status
+                            }
+                            onChange={(e) => {
+                              const next = e.target.value;
+                              // Don't call API if placeholder is selected
+                              if (!next) return;
+                              handleStatusChange(order._id, next);
+                            }}
                             className="text-sm px-3 py-2 rounded-lg border border-gray-300 bg-white text-gray-700 focus:border-blue-500 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                           >
                             {user?.isManager && !user?.isCompanyAdmin && !user?.isSuperAdmin ? (
                               <>
+                                <option value="">
+                                  Select
+                                </option>
                                 <option value="processing">Processing</option>
                                 <option value="rejected">Rejected</option>
                               </>
