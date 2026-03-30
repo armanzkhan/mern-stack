@@ -66,40 +66,95 @@ async function login(req, res) {
     const isEmail = loginId.includes("@");
     const digitsOnly = loginId.replace(/\D/g, "");
     const phoneCandidates = [loginId];
+
+    const addPhoneCandidate = (value) => {
+      if (value && typeof value === "string") phoneCandidates.push(value);
+    };
+
+    // Many records store phone as `0333-5305004` while users may enter `03335305004`.
+    // Add common dashed variants so the `$in` query can still match.
+    const addDashedVariants = (digits) => {
+      if (!digits || typeof digits !== "string") return;
+
+      // Common Pakistan mobile style: `0XXX-XXXXXXX` (11 digits total)
+      if (/^0\d{10}$/.test(digits)) {
+        addPhoneCandidate(`${digits.slice(0, 4)}-${digits.slice(4)}`);
+      }
+
+      // Fallback when leading `0` is missing: `XXX-XXXXXXX` (10 digits total)
+      if (/^\d{10}$/.test(digits)) {
+        addPhoneCandidate(`${digits.slice(0, 3)}-${digits.slice(3)}`);
+      }
+    };
     if (digitsOnly) {
-      phoneCandidates.push(digitsOnly);
-      if (digitsOnly.startsWith("0") && digitsOnly.length > 1)
-        phoneCandidates.push(digitsOnly.slice(1));
-      if (digitsOnly.length >= 10 && !digitsOnly.startsWith("92"))
-        phoneCandidates.push("92" + (digitsOnly.startsWith("0") ? digitsOnly.slice(1) : digitsOnly));
-      if (digitsOnly.startsWith("92"))
-        phoneCandidates.push("0" + digitsOnly.slice(2));
+      addPhoneCandidate(digitsOnly);
+      addDashedVariants(digitsOnly);
+
+      if (digitsOnly.startsWith("0") && digitsOnly.length > 1) {
+        const withoutLeading0 = digitsOnly.slice(1);
+        addPhoneCandidate(withoutLeading0);
+        addDashedVariants(withoutLeading0);
+      }
+
+      if (digitsOnly.length >= 10 && !digitsOnly.startsWith("92")) {
+        const to92 = "92" + (digitsOnly.startsWith("0") ? digitsOnly.slice(1) : digitsOnly);
+        addPhoneCandidate(to92);
+      }
+
+      if (digitsOnly.startsWith("92")) {
+        const to0 = "0" + digitsOnly.slice(2);
+        addPhoneCandidate(to0);
+        addDashedVariants(to0);
+      }
     }
+    const phoneCandidatesUnique = Array.from(new Set(phoneCandidates));
 
-    const query = isEmail
-      ? { email: loginId }
-      : { $or: [{ phone: { $in: phoneCandidates } }, { email: loginId }] };
+    const rolePopulate = {
+      path: "roles",
+      populate: { path: "permissions" },
+    };
 
-    const user = await User.findOne(query)
-      .populate({
-        path: 'roles',
-        populate: {
-          path: 'permissions'
+    let user;
+
+    if (isEmail) {
+      user = await User.findOne({ email: loginId })
+        .populate(rolePopulate)
+        .populate("permissions");
+      if (!user)
+        return res.status(404).json({ success: false, message: "User not found" });
+
+      const validPassword = await bcrypt.compare(passwordValue, user.password);
+      if (!validPassword)
+        return res.status(401).json({ success: false, message: "Invalid credentials" });
+    } else {
+      // Multiple customers may share the same phone; match the account by password.
+      const phoneQuery = {
+        $or: [{ phone: { $in: phoneCandidatesUnique } }, { email: loginId }],
+      };
+      const candidates = await User.find(phoneQuery).lean();
+      if (!candidates.length)
+        return res.status(404).json({ success: false, message: "User not found" });
+
+      let matched = null;
+      for (const u of candidates) {
+        if (await bcrypt.compare(passwordValue, u.password)) {
+          matched = u;
+          break;
         }
-      })
-      .populate("permissions");
-    if (!user)
-      return res.status(404).json({ success: false, message: "User not found" });
+      }
+      if (!matched)
+        return res.status(401).json({ success: false, message: "Invalid credentials" });
+
+      user = await User.findById(matched._id)
+        .populate(rolePopulate)
+        .populate("permissions");
+    }
 
     console.log("🔍 User found:", {
       email: user.email,
       roles: user.roles,
       permissions: user.permissions
     });
-
-    const validPassword = await bcrypt.compare(passwordValue, user.password);
-    if (!validPassword)
-      return res.status(401).json({ success: false, message: "Invalid credentials" });
 
     // Validate required fields for token generation
     if (!user.user_id) {

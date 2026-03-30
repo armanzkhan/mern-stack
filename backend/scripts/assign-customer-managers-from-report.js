@@ -197,20 +197,46 @@ async function assign(reportPath, companyId, dryRun) {
   }
 
   const customers = await Customer.find({ company_id: companyId }).lean();
-  const customerByPhone = new Map();
-  const customerByName = new Map();
+  // Important: phone numbers are NOT unique in your dataset.
+  // So we must keep an array of customers per phone and disambiguate using name when needed.
+  const customerByPhone = new Map(); // phone -> Customer[]
+  const customerByName = new Map(); // normalizedName -> Customer (first match)
 
   for (const c of customers) {
     const p = normalizePhone(c.phone);
-    if (p) customerByPhone.set(p, c);
+    if (p) {
+      const arr = customerByPhone.get(p) || [];
+      arr.push(c);
+      customerByPhone.set(p, arr);
+    }
     const n = normalizeName(c.companyName || c.contactName);
     if (n && !customerByName.has(n)) customerByName.set(n, c);
+  }
+
+  function getCustomerMatchScore(customer, approxName, rawLine) {
+    const a = approxName ? normalizeName(approxName) : "";
+    const raw = rawLine ? normalizeName(rawLine) : "";
+
+    const cCompany = normalizeName(customer.companyName || "");
+    const cContact = normalizeName(customer.contactName || "");
+    const cAny = cCompany || cContact;
+
+    // Best signal: is the candidate's stored name actually present in the raw report row?
+    if (raw && cAny && raw.includes(cAny)) return 100;
+
+    if (!a) return 0;
+    if (cCompany === a || cContact === a) return 100;
+    if (cCompany && cCompany.includes(a)) return 80;
+    if (cContact && cContact.includes(a)) return 80;
+    if (a && (a.includes(cCompany) || a.includes(cContact))) return 70;
+    return 0;
   }
 
   let matched = 0;
   let updated = 0;
   let unresolvedManager = 0;
   let unresolvedCustomer = 0;
+  let ambiguousPhoneMatch = 0;
   const unresolved = [];
   const customerOps = [];
   const userOps = [];
@@ -228,7 +254,27 @@ async function assign(reportPath, companyId, dryRun) {
     }
 
     let customer = null;
-    if (row.phone) customer = customerByPhone.get(row.phone) || null;
+
+    // 1) Prefer exact-match disambiguation when multiple customers share the same phone.
+    if (row.phone) {
+      const candidates = customerByPhone.get(row.phone) || [];
+      if (candidates.length === 1) {
+        customer = candidates[0];
+      } else if (candidates.length > 1) {
+        // Try to match using the candidate's stored name found inside the raw report row.
+        const scored = candidates
+          .map((c) => ({ c, score: getCustomerMatchScore(c, row.approxName, row.raw) }))
+          .sort((a, b) => b.score - a.score);
+
+        if (scored[0]?.score >= 70) {
+          customer = scored[0].c;
+        } else {
+          ambiguousPhoneMatch++;
+        }
+      }
+    }
+
+    // 2) Fallback to name lookup if phone didn't resolve (or wasn't present).
     if (!customer && row.approxName) customer = customerByName.get(row.approxName) || null;
 
     if (!customer) {
@@ -317,6 +363,7 @@ async function assign(reportPath, companyId, dryRun) {
   console.log(`Customers updated: ${dryRun ? 0 : updated}`);
   console.log(`Managers not found: ${unresolvedManager}`);
   console.log(`Customers not found: ${unresolvedCustomer}`);
+  console.log(`Ambiguous phone matches: ${ambiguousPhoneMatch}`);
   console.log(`Mode: ${dryRun ? "DRY RUN" : "WRITE"}`);
 
   if (unresolved.length) {
