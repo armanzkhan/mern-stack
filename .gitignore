@@ -51,6 +51,9 @@ coverage/
 .temp/
 .tmp/
 
+# One-off data / audit outputs (do not commit)
+backend/reports/
+
 # MongoDB backups
 mongodb-backup/
 *.bson

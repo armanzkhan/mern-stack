@@ -16,6 +16,13 @@ export function Sidebar() {
   const { setIsOpen, isOpen, isMobile, toggleSidebar } = useSidebarContext();
   const { user, hasPermission, isSuperAdmin, isCompanyAdmin, isManager, isCustomer, logout } = useUser();
   const [expandedItems, setExpandedItems] = useState<string[]>([]);
+  const roleNames = (user?.roles || []).map((r: any) => String(r).toLowerCase().trim());
+  const userRoleName = String(user?.role || "").toLowerCase().trim();
+  const isLogisticManager =
+    roleNames.includes("logistic manager") ||
+    roleNames.includes("logistic_manager") ||
+    userRoleName === "logistic manager" ||
+    userRoleName === "logistic_manager";
 
   const handleLogout = () => {
     logout();
@@ -46,6 +53,11 @@ export function Sidebar() {
 
       // Hide "Customer Management" when user is a customer
       if (item.title === "Customer Management" && isCustomer()) {
+        return false;
+      }
+
+      // Hide "Customer Management" for logistic manager
+      if (item.title === "Customer Management" && isLogisticManager) {
         return false;
       }
 
@@ -86,6 +98,14 @@ export function Sidebar() {
         const filteredSubItems = item.items.filter((subItem: any) => {
           // Hide "Customer Ledger" when user is a customer
           if (subItem.title === "Customer Ledger" && isCustomer()) {
+            return false;
+          }
+
+          // Hide ledger view for logistics manager
+          if (
+            isLogisticManager &&
+            (subItem.title === "Customer Ledger" || subItem.title === "Customer Ledger View")
+          ) {
             return false;
           }
 

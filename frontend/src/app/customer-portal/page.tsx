@@ -276,6 +276,10 @@ export default function CustomerPortal() {
 
   const getStatusColor = (status: string) => {
     switch (status.toLowerCase()) {
+      case 'dispatch':
+        return 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900/30 dark:text-cyan-300';
+      case 'hold':
+        return 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300';
       case 'pending':
         return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300';
       case 'approved':

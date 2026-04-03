@@ -20,7 +20,7 @@ interface Permission {
 }
 
 export default function CreateUserPage() {
-  const [formData, setFormData] = useState({
+  const initialFormData = {
     firstName: "",
     lastName: "",
     email: "",
@@ -31,12 +31,13 @@ export default function CreateUserPage() {
     permissions: [] as string[],
     company_id: "RESSICHEM",
     isActive: true,
-    userType: "staff", // staff, customer, manager
+    userType: "staff", // staff, customer, manager, logistic_manager
     isCustomer: false,
     isManager: false,
     // Manager-specific fields
     assignedCategories: [] as string[],
     managerLevel: 'junior',
+    managerStatusActions: ["processing", "rejected"] as string[],
     // Customer-specific fields
     companyName: "",
     contactName: "",
@@ -50,17 +51,33 @@ export default function CreateUserPage() {
     },
     customerType: "regular",
     assignedManagers: [] as string[] // Array of manager IDs
+  };
+
+  const [formData, setFormData] = useState({
+    ...initialFormData
   });
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [customizeAccess, setCustomizeAccess] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [roles, setRoles] = useState<Role[]>([]);
   const [permissions, setPermissions] = useState<Permission[]>([]);
   const [managers, setManagers] = useState<any[]>([]);
+  /** Set when the managers API fails (vs empty list = no managers in DB). */
+  const [managersLoadError, setManagersLoadError] = useState<string | null>(null);
   const [categories, setCategories] = useState<any[]>([]);
   const [fetchingData, setFetchingData] = useState(true);
   const lastAutoAssignedType = useRef<string>('');
   const router = useRouter();
+  const isAutoAssignedType = formData.userType === "customer" || formData.userType === "manager" || formData.userType === "logistic_manager";
+  const lockAccessSelection = isAutoAssignedType && !customizeAccess;
+
+  useEffect(() => {
+    if (isAutoAssignedType) {
+      setCustomizeAccess(true);
+    }
+  }, [formData.userType, isAutoAssignedType]);
 
   // Fetch roles and permissions from backend
   useEffect(() => {
@@ -113,6 +130,7 @@ export default function CreateUserPage() {
             { _id: 'staff', name: 'Staff Member', description: 'Regular company employee' },
             { _id: 'admin', name: 'Administrator', description: 'System administrator' },
             { _id: 'manager', name: 'Manager', description: 'Department manager' },
+            { _id: 'logistic_manager', name: 'Logistic Manager', description: 'Dispatch and hold order operations' },
             { _id: 'customer', name: 'Customer', description: 'External customer user' }
           ]);
         }
@@ -150,17 +168,24 @@ export default function CreateUserPage() {
           ]);
         }
 
-        if (managersRes.ok) {
-          const managersData = await managersRes.json();
-          setManagers(Array.isArray(managersData) ? managersData : managersData.managers || []);
-        }
-
-        // Fetch all managers for customer assignment
+        setManagersLoadError(null);
+        // Prefer /api/managers/all response (same backend as /api/managers); surface errors clearly.
         if (managersAllRes.ok) {
           const managersAllData = await managersAllRes.json();
           const allManagers = Array.isArray(managersAllData) ? managersAllData : managersAllData.managers || [];
-          setManagers(allManagers); // Use this for manager selection dropdown
+          setManagers(allManagers);
           console.log("All managers loaded for assignment:", allManagers.length);
+        } else if (managersRes.ok) {
+          const managersData = await managersRes.json();
+          setManagers(Array.isArray(managersData) ? managersData : managersData.managers || []);
+        } else {
+          const errBody = await managersAllRes.json().catch(() => ({}));
+          const msg =
+            (errBody as { error?: string; message?: string }).error ||
+            (errBody as { error?: string; message?: string }).message ||
+            `Could not load managers (${managersAllRes.status})`;
+          setManagersLoadError(msg);
+          setManagers([]);
         }
 
         if (categoriesRes.ok) {
@@ -196,6 +221,7 @@ export default function CreateUserPage() {
           { _id: 'staff', name: 'Staff Member', description: 'Regular company employee' },
           { _id: 'admin', name: 'Administrator', description: 'System administrator' },
           { _id: 'manager', name: 'Manager', description: 'Department manager' },
+          { _id: 'logistic_manager', name: 'Logistic Manager', description: 'Dispatch and hold order operations' },
           { _id: 'customer', name: 'Customer', description: 'External customer user' }
         ]);
         setPermissions([
@@ -296,6 +322,7 @@ export default function CreateUserPage() {
 
       setFormData(prev => ({
         ...prev,
+        managerStatusActions: ["processing", "rejected"],
         roles: assignedRoles,
         permissions: assignedPermissions
       }));
@@ -325,6 +352,46 @@ export default function CreateUserPage() {
 
       setFormData(prev => ({
         ...prev,
+        roles: assignedRoles,
+        permissions: assignedPermissions
+      }));
+    } else if (formData.userType === 'logistic_manager') {
+      const assignedRoles: string[] = [];
+      const assignedPermissions: string[] = [];
+
+      // Prefer dedicated role, fallback to Manager role if not present
+      const logisticRole = roles.find(role =>
+        role.name.toLowerCase() === 'logistic manager' || role._id.toLowerCase() === 'logistic_manager'
+      );
+      const managerFallbackRole = roles.find(role =>
+        role.name.toLowerCase() === 'manager' || role._id.toLowerCase() === 'manager'
+      );
+      if (logisticRole) {
+        assignedRoles.push(logisticRole._id);
+      } else if (managerFallbackRole) {
+        assignedRoles.push(managerFallbackRole._id);
+      }
+
+      // Logistics-focused operational permissions
+      const logisticsPermissionKeys = [
+        'orders.read',
+        'orders.update',
+        'notifications.read'
+      ];
+
+      permissions.forEach(permission => {
+        if (logisticsPermissionKeys.includes(permission.key) ||
+            logisticsPermissionKeys.some(key => permission._id === key)) {
+          assignedPermissions.push(permission._id);
+        }
+      });
+
+      setFormData(prev => ({
+        ...prev,
+        isCustomer: false,
+        isManager: false,
+        assignedCategories: [],
+        managerStatusActions: ["dispatch", "hold"],
         roles: assignedRoles,
         permissions: assignedPermissions
       }));
@@ -373,10 +440,27 @@ export default function CreateUserPage() {
     e.preventDefault();
     setLoading(true);
     setMessage("");
+    setFieldErrors({});
 
-    // Validate that at least one role is selected
+    const nextErrors: Record<string, string> = {};
+    if (!formData.firstName.trim()) nextErrors.firstName = "First name is required.";
+    if (!formData.lastName.trim()) nextErrors.lastName = "Last name is required.";
+    if (!formData.password.trim() || formData.password.trim().length < 6) nextErrors.password = "Password must be at least 6 characters.";
+    if (!formData.phone.trim()) nextErrors.phone = "Phone number is required.";
+
+    if (formData.userType === "customer") {
+      if (!formData.companyName.trim()) nextErrors.companyName = "Company name is required for customers.";
+      if (!formData.contactName.trim()) nextErrors.contactName = "Contact person is required for customers.";
+      if (!formData.customerPhone.trim()) nextErrors.customerPhone = "Customer phone is required.";
+    }
+
     if (formData.roles.length === 0) {
-      setMessage("❌ Please select at least one role for the user");
+      nextErrors.roles = "Please select at least one role.";
+    }
+
+    if (Object.keys(nextErrors).length > 0) {
+      setFieldErrors(nextErrors);
+      setMessage("❌ Please fix the highlighted fields and try again.");
       setLoading(false);
       return;
     }
@@ -410,35 +494,8 @@ export default function CreateUserPage() {
         
         setMessage("✅ User created successfully!");
         // Reset form
-        setFormData({
-          firstName: "",
-          lastName: "",
-          email: "",
-          password: "",
-          phone: "",
-          department: "",
-          roles: [],
-          permissions: [],
-          company_id: "RESSICHEM",
-          isActive: true,
-          userType: "staff",
-          isCustomer: false,
-          isManager: false,
-          companyName: "",
-          contactName: "",
-          customerPhone: "",
-          address: {
-            street: "",
-            city: "",
-            state: "",
-            zip: "",
-            country: "Pakistan"
-          },
-          customerType: "regular",
-          assignedManagers: [],
-          assignedCategories: [],
-          managerLevel: 'junior'
-        });
+        setFormData({ ...initialFormData });
+        setCustomizeAccess(false);
         // Redirect to users list after 2 seconds
         setTimeout(() => {
           router.push('/users');
@@ -477,11 +534,12 @@ export default function CreateUserPage() {
     >
       <Breadcrumb pageName="Create User" />
       
-      <div className="rounded-[10px] bg-white shadow-1 border border-blue-900/20 dark:bg-gray-800 dark:shadow-card">
-        <div className="border-b border-blue-900/20 px-7 py-4 dark:border-gray-700">
-          <h3 className="font-medium text-blue-900 dark:text-white">
+      <div className="rounded-2xl border border-blue-900/20 bg-white shadow-xl dark:bg-gray-800 dark:shadow-card overflow-hidden">
+        <div className="border-b border-blue-900/20 bg-gradient-to-r from-blue-900 to-blue-700 px-7 py-5 dark:border-gray-700">
+          <h3 className="font-semibold text-white text-lg">
             User Information
           </h3>
+          <p className="mt-1 text-sm text-blue-100">Create users faster with role-based presets and inline validation.</p>
         </div>
         
         <div className="p-7">
@@ -493,7 +551,7 @@ export default function CreateUserPage() {
               </h4>
               <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
                 <div>
-                  <label className="mb-3 block text-sm font-medium text-blue-900 dark:text-white">
+                <label className="mb-3 block text-sm font-medium text-blue-900 dark:text-white">
                     First Name <span className="text-red-500">*</span>
                   </label>
                   <input
@@ -502,8 +560,9 @@ export default function CreateUserPage() {
                     value={formData.firstName}
                     onChange={(e) => setFormData({...formData, firstName: e.target.value})}
                     placeholder="Enter first name"
-                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 text-blue-900 focus:border-blue-900 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                  className={`w-full rounded-xl border bg-transparent px-4 py-3 text-blue-900 focus:border-blue-900 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white ${fieldErrors.firstName ? "border-red-500" : "border-stroke"}`}
                   />
+                {fieldErrors.firstName && <p className="mt-1 text-xs text-red-500">{fieldErrors.firstName}</p>}
                 </div>
                 
                 <div>
@@ -516,8 +575,9 @@ export default function CreateUserPage() {
                     value={formData.lastName}
                     onChange={(e) => setFormData({...formData, lastName: e.target.value})}
                     placeholder="Enter last name"
-                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 text-blue-900 focus:border-blue-900 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                  className={`w-full rounded-xl border bg-transparent px-4 py-3 text-blue-900 focus:border-blue-900 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white ${fieldErrors.lastName ? "border-red-500" : "border-stroke"}`}
                   />
+                {fieldErrors.lastName && <p className="mt-1 text-xs text-red-500">{fieldErrors.lastName}</p>}
                 </div>
                 
                 <div>
@@ -544,7 +604,7 @@ export default function CreateUserPage() {
                       value={formData.password}
                       onChange={(e) => setFormData({...formData, password: e.target.value})}
                       placeholder="Enter password (min 6 characters)"
-                      className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 pr-12 text-blue-900 focus:border-blue-900 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                      className={`w-full rounded-xl border bg-transparent px-4 py-3 pr-12 text-blue-900 focus:border-blue-900 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white ${fieldErrors.password ? "border-red-500" : "border-stroke"}`}
                     />
                     <button
                       type="button"
@@ -563,6 +623,7 @@ export default function CreateUserPage() {
                       )}
                     </button>
                   </div>
+                  {fieldErrors.password && <p className="mt-1 text-xs text-red-500">{fieldErrors.password}</p>}
                 </div>
 
                 <div>
@@ -575,8 +636,9 @@ export default function CreateUserPage() {
                     value={formData.phone}
                     onChange={(e) => setFormData({...formData, phone: e.target.value})}
                     placeholder="+92 XXX XXXXXXX"
-                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 text-blue-900 focus:border-blue-900 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                    className={`w-full rounded-xl border bg-transparent px-4 py-3 text-blue-900 focus:border-blue-900 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white ${fieldErrors.phone ? "border-red-500" : "border-stroke"}`}
                   />
+                  {fieldErrors.phone && <p className="mt-1 text-xs text-red-500">{fieldErrors.phone}</p>}
                 </div>
 
                 <div>
@@ -602,7 +664,7 @@ export default function CreateUserPage() {
               <p className="mb-4 text-sm text-blue-700 dark:text-blue-300">
                 Select the type of user you want to create. This determines their access level and permissions.
               </p>
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
                 <label className={`flex items-center gap-3 p-4 rounded-lg border-2 cursor-pointer transition-all ${
                   formData.userType === 'staff' 
                     ? 'border-blue-900 bg-blue-900/5' 
@@ -621,6 +683,7 @@ export default function CreateUserPage() {
                   <div>
                     <div className="font-medium text-blue-900 dark:text-white">Staff Member</div>
                     <div className="text-sm text-blue-700 dark:text-blue-300">Regular company employee</div>
+                    <span className="mt-1 inline-flex rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-700 dark:bg-gray-700 dark:text-gray-200">Manual access</span>
                   </div>
                 </label>
 
@@ -661,6 +724,7 @@ export default function CreateUserPage() {
                   <div>
                     <div className="font-medium text-blue-900 dark:text-white">Customer</div>
                     <div className="text-sm text-blue-700 dark:text-blue-300">Can view products and place orders</div>
+                    <span className="mt-1 inline-flex rounded-full bg-blue-100 px-2 py-0.5 text-[11px] text-blue-800 dark:bg-blue-900/30 dark:text-blue-200">Customer portal</span>
                   </div>
                 </label>
 
@@ -691,6 +755,44 @@ export default function CreateUserPage() {
                   <div>
                     <div className="font-medium text-blue-900 dark:text-white">Manager</div>
                     <div className="text-sm text-blue-700 dark:text-blue-300">Manages specific product categories</div>
+                    <span className="mt-1 inline-flex rounded-full bg-purple-100 px-2 py-0.5 text-[11px] text-purple-800 dark:bg-purple-900/30 dark:text-purple-200">Processing + Rejected</span>
+                  </div>
+                </label>
+
+                <label className={`flex items-center gap-3 p-4 rounded-lg border-2 transition-all ${
+                  formData.userType === 'logistic_manager'
+                    ? 'border-blue-900 bg-blue-900/5'
+                    : 'border-stroke dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700'
+                } ${
+                  formData.isCustomer || formData.userType === 'customer'
+                    ? 'opacity-50 cursor-not-allowed'
+                    : 'cursor-pointer'
+                }`}>
+                  <input
+                    type="radio"
+                    name="userType"
+                    value="logistic_manager"
+                    checked={formData.userType === 'logistic_manager'}
+                    disabled={formData.isCustomer || formData.userType === 'customer'}
+                    onChange={(e) => {
+                      if (formData.isCustomer || formData.userType === 'customer') {
+                        alert('Customers cannot be assigned as logistics managers. Please select a different user type.');
+                        return;
+                      }
+                      setFormData({
+                        ...formData,
+                        userType: e.target.value,
+                        isCustomer: false,
+                        isManager: false,
+                        assignedCategories: []
+                      });
+                    }}
+                    className="text-blue-900 focus:ring-blue-900 disabled:opacity-50 disabled:cursor-not-allowed"
+                  />
+                  <div>
+                    <div className="font-medium text-blue-900 dark:text-white">Logistic Manager</div>
+                    <div className="text-sm text-blue-700 dark:text-blue-300">Can dispatch or hold orders</div>
+                    <span className="mt-1 inline-flex rounded-full bg-cyan-100 px-2 py-0.5 text-[11px] text-cyan-800 dark:bg-cyan-900/30 dark:text-cyan-200">Dispatch + Hold</span>
                   </div>
                 </label>
               </div>
@@ -721,8 +823,9 @@ export default function CreateUserPage() {
                           value={formData.companyName}
                           onChange={(e) => setFormData({...formData, companyName: e.target.value})}
                           placeholder="Enter company name"
-                          className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 text-blue-900 focus:border-blue-900 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                          className={`w-full rounded-lg border bg-transparent px-4 py-3 text-blue-900 focus:border-blue-900 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white ${fieldErrors.companyName ? "border-red-500" : "border-stroke"}`}
                         />
+                        {fieldErrors.companyName && <p className="mt-1 text-xs text-red-500">{fieldErrors.companyName}</p>}
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-blue-900 dark:text-white mb-2">
@@ -734,8 +837,9 @@ export default function CreateUserPage() {
                           value={formData.contactName}
                           onChange={(e) => setFormData({...formData, contactName: e.target.value})}
                           placeholder="Enter contact person name"
-                          className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 text-blue-900 focus:border-blue-900 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                          className={`w-full rounded-lg border bg-transparent px-4 py-3 text-blue-900 focus:border-blue-900 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white ${fieldErrors.contactName ? "border-red-500" : "border-stroke"}`}
                         />
+                        {fieldErrors.contactName && <p className="mt-1 text-xs text-red-500">{fieldErrors.contactName}</p>}
                       </div>
                     </div>
                   </div>
@@ -754,8 +858,9 @@ export default function CreateUserPage() {
                           value={formData.customerPhone}
                           onChange={(e) => setFormData({...formData, customerPhone: e.target.value})}
                           placeholder="+92 XXX XXXXXXX"
-                          className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 text-blue-900 focus:border-blue-900 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                          className={`w-full rounded-lg border bg-transparent px-4 py-3 text-blue-900 focus:border-blue-900 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white ${fieldErrors.customerPhone ? "border-red-500" : "border-stroke"}`}
                         />
+                        {fieldErrors.customerPhone && <p className="mt-1 text-xs text-red-500">{fieldErrors.customerPhone}</p>}
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-blue-900 dark:text-white mb-2">
@@ -886,10 +991,23 @@ export default function CreateUserPage() {
                       <div className="flex items-center justify-center py-4">
                         <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-900"></div>
                       </div>
+                    ) : managersLoadError ? (
+                      <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                        <p className="text-red-800 dark:text-red-200 text-sm font-medium">Could not load managers</p>
+                        <p className="text-red-700 dark:text-red-300 text-sm mt-1">{managersLoadError}</p>
+                        <p className="text-red-600/90 dark:text-red-300/90 text-xs mt-2">
+                          Check that you are logged in, the backend is reachable, and your account can call{" "}
+                          <code className="rounded bg-red-100/80 px-1 dark:bg-red-900/40">GET /api/managers/all</code>.
+                        </p>
+                      </div>
                     ) : managers.length === 0 ? (
-                      <div className="p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
-                        <p className="text-yellow-800 dark:text-yellow-200 text-sm">
-                          No managers available. Please create managers first.
+                      <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+                        <p className="text-amber-900 dark:text-amber-100 text-sm font-medium">
+                          No sales managers found for your company yet
+                        </p>
+                        <p className="text-amber-800 dark:text-amber-200 text-sm mt-1">
+                          This list comes from users who are <strong>Managers</strong> (sales / category managers). Create at least one Manager user first
+                          (e.g. <strong>Users → Create User → Manager</strong>), then refresh this page. Optional assignment can stay empty until then.
                         </p>
                       </div>
                     ) : (
@@ -1004,6 +1122,36 @@ export default function CreateUserPage() {
                 </p>
                 
                 <div className="space-y-6">
+                  {/* Order Status Actions */}
+                  <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg">
+                    <h5 className="text-sm font-medium text-blue-900 dark:text-white mb-3">
+                      Order Status Actions (Pre-selected)
+                    </h5>
+                    <p className="text-sm text-blue-700 dark:text-blue-300 mb-4">
+                      Managers are pre-configured to handle only these order status actions.
+                    </p>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      <label className="flex items-center gap-2 p-2 rounded border border-blue-900/20 dark:border-gray-600 bg-white dark:bg-gray-700">
+                        <input
+                          type="checkbox"
+                          checked
+                          readOnly
+                          className="rounded border-stroke text-blue-900 focus:ring-blue-900 dark:border-gray-600"
+                        />
+                        <span className="text-sm text-blue-900 dark:text-white">Processing</span>
+                      </label>
+                      <label className="flex items-center gap-2 p-2 rounded border border-blue-900/20 dark:border-gray-600 bg-white dark:bg-gray-700">
+                        <input
+                          type="checkbox"
+                          checked
+                          readOnly
+                          className="rounded border-stroke text-blue-900 focus:ring-blue-900 dark:border-gray-600"
+                        />
+                        <span className="text-sm text-blue-900 dark:text-white">Rejected</span>
+                      </label>
+                    </div>
+                  </div>
+
                   {/* Category Assignment */}
                   <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg">
                     <h5 className="text-sm font-medium text-blue-900 dark:text-white mb-3">
@@ -1069,13 +1217,72 @@ export default function CreateUserPage() {
               </div>
             )}
 
+            {/* Logistic Manager Information - Only show when logistic manager is selected */}
+            {formData.userType === 'logistic_manager' && (
+              <div>
+                <h4 className="mb-4 text-lg font-medium text-blue-900 dark:text-white">
+                  Logistics Manager Information <span className="text-red-500">*</span>
+                </h4>
+                <p className="mb-4 text-sm text-blue-700 dark:text-blue-300">
+                  Logistic managers are pre-configured for dispatch and hold operations.
+                </p>
+                
+                <div className="space-y-6">
+                  {/* Order Status Actions */}
+                  <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg">
+                    <h5 className="text-sm font-medium text-blue-900 dark:text-white mb-3">
+                      Order Status Actions (Pre-selected)
+                    </h5>
+                    <p className="text-sm text-blue-700 dark:text-blue-300 mb-4">
+                      Logistic managers are pre-configured to handle only these order status actions.
+                    </p>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      <label className="flex items-center gap-2 p-2 rounded border border-blue-900/20 dark:border-gray-600 bg-white dark:bg-gray-700">
+                        <input
+                          type="checkbox"
+                          checked
+                          readOnly
+                          className="rounded border-stroke text-blue-900 focus:ring-blue-900 dark:border-gray-600"
+                        />
+                        <span className="text-sm text-blue-900 dark:text-white">Dispatch</span>
+                      </label>
+                      <label className="flex items-center gap-2 p-2 rounded border border-blue-900/20 dark:border-gray-600 bg-white dark:bg-gray-700">
+                        <input
+                          type="checkbox"
+                          checked
+                          readOnly
+                          className="rounded border-stroke text-blue-900 focus:ring-blue-900 dark:border-gray-600"
+                        />
+                        <span className="text-sm text-blue-900 dark:text-white">Hold</span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Roles Selection */}
             <div>
-              <h4 className="mb-4 text-lg font-medium text-blue-900 dark:text-white">
+              <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <h4 className="text-lg font-medium text-blue-900 dark:text-white">
                 Assign Roles <span className="text-red-500">*</span>
-              </h4>
+                </h4>
+                {isAutoAssignedType && (
+                  <label className="inline-flex items-center gap-2 rounded-full border border-blue-900/20 bg-blue-50 px-3 py-1 text-xs text-blue-800 dark:border-gray-600 dark:bg-gray-700 dark:text-blue-200">
+                    <input
+                      type="checkbox"
+                      checked={customizeAccess}
+                      onChange={(e) => setCustomizeAccess(e.target.checked)}
+                      className="rounded border-stroke text-blue-900 focus:ring-blue-900 dark:border-gray-600"
+                    />
+                    Customize access
+                  </label>
+                )}
+              </div>
               <p className="mb-4 text-sm text-blue-700 dark:text-blue-300">
-                Select at least one role for the user. This determines their permissions and access level.
+                {lockAccessSelection
+                  ? "Roles are auto-assigned for this user type. Enable 'Customize access' to edit."
+                  : "Select at least one role for the user. This determines their permissions and access level."}
               </p>
               {fetchingData ? (
                 <div className="flex items-center justify-center py-4">
@@ -1095,6 +1302,7 @@ export default function CreateUserPage() {
                         type="checkbox"
                         checked={formData.roles.includes(role._id)}
                         onChange={(e) => handleRoleChange(role._id, e.target.checked)}
+                        disabled={lockAccessSelection}
                         className="rounded border-stroke text-blue-900 focus:ring-blue-900 dark:border-gray-600"
                       />
                       <div>
@@ -1107,13 +1315,19 @@ export default function CreateUserPage() {
                   ))}
                 </div>
               )}
+              {fieldErrors.roles && <p className="mt-2 text-xs text-red-500">{fieldErrors.roles}</p>}
             </div>
 
             {/* Permissions Selection */}
             <div>
-              <h4 className="mb-4 text-lg font-medium text-blue-900 dark:text-white">
+              <h4 className="mb-2 text-lg font-medium text-blue-900 dark:text-white">
                 Assign Permissions
               </h4>
+              <p className="mb-4 text-sm text-blue-700 dark:text-blue-300">
+                {lockAccessSelection
+                  ? "Permissions are auto-assigned for this user type. Enable 'Customize access' to edit."
+                  : "Fine-tune direct permissions for special cases."}
+              </p>
               {fetchingData ? (
                 <div className="flex items-center justify-center py-4">
                   <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-900"></div>
@@ -1126,6 +1340,7 @@ export default function CreateUserPage() {
                         type="checkbox"
                         checked={formData.permissions.includes(permission._id)}
                         onChange={(e) => handlePermissionChange(permission._id, e.target.checked)}
+                        disabled={lockAccessSelection}
                         className="rounded border-stroke text-blue-900 focus:ring-blue-900 dark:border-gray-600"
                       />
                       <div>
@@ -1148,7 +1363,8 @@ export default function CreateUserPage() {
             )}
 
             {/* Action Buttons */}
-            <div className="flex flex-col sm:flex-row gap-4 pt-6">
+            <div className="sticky bottom-0 z-10 -mx-7 mt-8 border-t border-blue-900/15 bg-white/95 px-7 py-4 backdrop-blur dark:border-gray-700 dark:bg-gray-800/95">
+              <div className="flex flex-col gap-4 sm:flex-row">
               <button
                 type="submit"
                 disabled={loading}
@@ -1171,6 +1387,7 @@ export default function CreateUserPage() {
               >
                 Cancel
               </button>
+              </div>
             </div>
           </form>
         </div>

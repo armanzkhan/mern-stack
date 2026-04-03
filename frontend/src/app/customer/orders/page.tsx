@@ -60,6 +60,8 @@ export default function CustomerOrders() {
 
   const getStatusColor = (status: string) => {
     switch (status.toLowerCase()) {
+      case 'dispatch': return 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900/20 dark:text-cyan-200';
+      case 'hold': return 'bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-200';
       case 'pending': return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-200';
       case 'approved': return 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-200';
       case 'rejected': return 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-200';
@@ -74,6 +76,8 @@ export default function CustomerOrders() {
 
   const getStatusIcon = (status: string) => {
     switch (status.toLowerCase()) {
+      case 'dispatch': return '🚚';
+      case 'hold': return '⏸️';
       case 'pending': return '⏳';
       case 'approved': return '✅';
       case 'rejected': return '❌';

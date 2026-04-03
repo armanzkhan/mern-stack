@@ -9,6 +9,49 @@ const categoryNotificationService = require("../services/categoryNotificationSer
 const realtimeService = require("../services/realtimeService");
 const itemApprovalService = require("../services/itemApprovalService");
 
+const LOGISTICS_STATUSES = ["dispatch", "hold"];
+const MANAGER_STATUSES = ["processing", "rejected"];
+const COMPANY_ADMIN_STATUSES = [
+  "pending",
+  "approved",
+  "rejected",
+  "confirmed",
+  "processing",
+  "allocated",
+  "dispatch",
+  "hold",
+  "dispatched",
+  "shipped",
+  "completed",
+  "cancelled"
+];
+
+const normalizeRoleName = (role) => String(role || "").toLowerCase().trim();
+
+const isLogisticManagerUser = (req) => {
+  const tokenRole = normalizeRoleName(req.user?.role);
+  const tokenRoles = Array.isArray(req.user?.roles) ? req.user.roles.map(normalizeRoleName) : [];
+  return tokenRole === "logistic manager" || tokenRole === "logistic_manager" ||
+    tokenRoles.includes("logistic manager") || tokenRoles.includes("logistic_manager");
+};
+
+const isCompanyAdminUser = (req) => {
+  const tokenRole = normalizeRoleName(req.user?.role);
+  const tokenRoles = Array.isArray(req.user?.roles) ? req.user.roles.map(normalizeRoleName) : [];
+  return req.user?.isCompanyAdmin === true ||
+    tokenRole === "company admin" || tokenRole === "company_admin" ||
+    tokenRoles.includes("company admin") || tokenRoles.includes("company_admin");
+};
+
+const getAllowedStatusesForUser = (req) => {
+  if (req.user?.isSuperAdmin || isCompanyAdminUser(req)) return COMPANY_ADMIN_STATUSES;
+  if (req.user?.isManager || isLogisticManagerUser(req)) {
+    // Backend accepts both manager and logistics transitions; UI enforces per-role options.
+    return [...LOGISTICS_STATUSES, ...MANAGER_STATUSES];
+  }
+  return [...LOGISTICS_STATUSES, ...MANAGER_STATUSES];
+};
+
 // Create order
 exports.createOrder = async (req, res) => {
   try {
@@ -639,11 +682,18 @@ exports.getOrderById = async (req, res) => {
 exports.updateOrderStatus = async (req, res) => {
   try {
     const { status, comments, discountAmount } = req.body;
+    const allowedStatuses = getAllowedStatusesForUser(req);
+    if (status && !allowedStatuses.includes(String(status).toLowerCase())) {
+      return res.status(400).json({ message: `Invalid status. Allowed statuses are: ${allowedStatuses.join(", ")}.` });
+    }
     const oldOrder = await Order.findById(req.params.id);
     if (!oldOrder) return res.status(404).json({ message: "Order not found" });
 
     // Prepare update data
-    const updateData = { status };
+    const updateData = {};
+    if (status) {
+      updateData.status = String(status).toLowerCase();
+    }
     
     // Handle discount amount if provided
     if (discountAmount && discountAmount > 0) {
@@ -710,7 +760,23 @@ exports.updateOrder = async (req, res) => {
 
     // Prepare update object
     const updateData = {};
-    if (status !== undefined) updateData.status = status;
+    if (status !== undefined) {
+      const normalizedStatus = String(status).toLowerCase();
+      const allowedStatuses = getAllowedStatusesForUser(req);
+      console.log("🔍 updateOrder status validation:", {
+        incomingStatus: status,
+        normalizedStatus,
+        allowedStatuses,
+        isManager: req.user?.isManager,
+        role: req.user?.role,
+        roles: req.user?.roles,
+        email: req.user?.email
+      });
+      if (!allowedStatuses.includes(normalizedStatus)) {
+        return res.status(400).json({ message: `Invalid status. Allowed statuses are: ${allowedStatuses.join(", ")}.` });
+      }
+      updateData.status = normalizedStatus;
+    }
     if (notes !== undefined) updateData.notes = notes;
     if (subtotal !== undefined) updateData.subtotal = subtotal;
     if (tax !== undefined) updateData.tax = tax;

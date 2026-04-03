@@ -200,6 +200,15 @@ async function login(req, res) {
       userType = 'customer';
     } else if (user.isManager) {
       userType = 'manager';
+    } else if (
+      (user.roles && user.roles.some(r => {
+        const roleName = typeof r === 'string' ? r : (r?.name || '');
+        return String(roleName).toLowerCase() === 'logistic manager' || String(roleName).toLowerCase() === 'logistic_manager';
+      })) ||
+      String(user.role || '').toLowerCase() === 'logistic manager' ||
+      String(user.role || '').toLowerCase() === 'logistic_manager'
+    ) {
+      userType = 'logistic_manager';
     }
 
     return res.json({

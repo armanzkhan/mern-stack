@@ -78,6 +78,27 @@ function OrdersPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, loading: userLoading } = useUser();
+  const roleNames = (user?.roles || []).map((r: any) => String(r).toLowerCase());
+  const userRoleName = String(user?.role || "").toLowerCase();
+  // Detect roles for dropdown behavior.
+  // Some existing logistic-manager users might have been created with an unexpected role name
+  // (e.g. fallback to "Manager"). In that case, we still treat them as logistics when:
+  // - not a category manager (user.isManager === false)
+  // - not a company admin / super admin
+  const isLogisticManagerRoleDetected =
+    roleNames.includes("logistic manager") ||
+    roleNames.includes("logistic_manager") ||
+    userRoleName === "logistic manager" ||
+    userRoleName === "logistic_manager";
+
+  const isCompanyAdminUser = !!user?.isCompanyAdmin && !user?.isSuperAdmin;
+  /** Full order status dropdown (same options as company admin + super admin). */
+  const isFullStatusDropdownUser = isCompanyAdminUser || !!user?.isSuperAdmin;
+  const isCategoryManager = !!user?.isManager && !user?.isCompanyAdmin && !user?.isSuperAdmin;
+  const isLogisticManagerFallback =
+    !user?.isManager && !user?.isCustomer && !isCompanyAdminUser && !user?.isSuperAdmin;
+
+  const isLogisticManager = isLogisticManagerRoleDetected || isLogisticManagerFallback;
 
   // Fetch invoices for orders
   const fetchInvoicesForOrders = async (orderNumbers: string[]) => {
@@ -384,7 +405,8 @@ function OrdersPageContent() {
         await fetchOrders();
         setTimeout(() => setMessage(""), 3000);
       } else {
-        setMessage(`❌ Failed to update status to ${newStatus}`);
+        const errorData = await response.json().catch(() => ({}));
+        setMessage(`❌ Failed to update status to ${newStatus}: ${errorData?.error || errorData?.message || 'Unknown error'}`);
         setTimeout(() => setMessage(""), 3000);
       }
     } catch (error) {
@@ -396,6 +418,8 @@ function OrdersPageContent() {
 
   const getStatusColor = (status: string) => {
     switch (status.toLowerCase()) {
+      case 'dispatch': return 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900/20 dark:text-cyan-400';
+      case 'hold': return 'bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-400';
       case 'pending': return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400';
       case 'approved': return 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400';
       case 'rejected': return 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400';
@@ -426,7 +450,6 @@ function OrdersPageContent() {
         method: 'PUT',
         headers: getAuthHeaders(),
         body: JSON.stringify({
-          status: 'approved',
           comments: discountComments || `Discount applied: PKR ${discountValue}`,
           discountAmount: parseFloat(discountValue)
         }),
@@ -685,12 +708,17 @@ function OrdersPageContent() {
                     className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 pr-8 text-gray-900 focus:border-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-900/50 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:focus:border-blue-400 appearance-none transition-all duration-300 text-sm"
                   >
                     <option value="">All Status</option>
-                    {user?.isManager && !user?.isCompanyAdmin && !user?.isSuperAdmin ? (
+                    {isCategoryManager ? (
                       <>
                         <option value="processing">Processing</option>
                         <option value="rejected">Rejected</option>
                       </>
-                    ) : (
+                    ) : isLogisticManager ? (
+                      <>
+                        <option value="dispatch">Dispatch</option>
+                        <option value="hold">Hold</option>
+                      </>
+                    ) : isFullStatusDropdownUser ? (
                       <>
                         <option value="pending">Pending</option>
                         <option value="approved">Approved</option>
@@ -698,10 +726,19 @@ function OrdersPageContent() {
                         <option value="confirmed">Confirmed</option>
                         <option value="processing">Processing</option>
                         <option value="allocated">Allocated</option>
+                        <option value="dispatch">Dispatch</option>
+                        <option value="hold">Hold</option>
                         <option value="dispatched">Dispatched</option>
                         <option value="shipped">Shipped</option>
                         <option value="completed">Completed</option>
                         <option value="cancelled">Cancelled</option>
+                      </>
+                    ) : (
+                      <>
+                        <option value="processing">Processing</option>
+                        <option value="rejected">Rejected</option>
+                        <option value="dispatch">Dispatch</option>
+                        <option value="hold">Hold</option>
                       </>
                     )}
                   </select>
@@ -761,6 +798,11 @@ function OrdersPageContent() {
                     
                     <div className="flex items-center flex-shrink-0 gap-2">
                       <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
+                        order.status === 'dispatch'
+                          ? "bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200"
+                          : order.status === 'hold'
+                          ? "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200"
+                          : 
                         order.status === 'pending'
                           ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200"
                           : order.status === 'approved'
@@ -889,16 +931,23 @@ function OrdersPageContent() {
                         <PermissionGate permission="orders.update">
                           <select
                             value={
-                              // For managers we only allow selecting "processing" or "rejected".
-                              // If the current order status is "processing" (or anything else like "pending"),
-                              // we show a placeholder instead of forcing "processing" to be pre-selected.
-                              user?.isManager &&
-                              !user?.isCompanyAdmin &&
-                              !user?.isSuperAdmin
-                                ? String(order?.status || "").toLowerCase() === "rejected"
-                                  ? "rejected"
-                                  : ""
-                                : order.status
+                              // Category managers: only Processing / Rejected in UI; use placeholder unless rejected.
+                              // Logistic managers: only Dispatch / Hold; use placeholder unless one of those.
+                              // Company admins: reflect the real order.status in the full list.
+                              // Other staff: placeholder unless rejected (Processing + Rejected + Dispatch + Hold options).
+                              (() => {
+                                const s = String(order?.status || "").toLowerCase();
+                                if (isCategoryManager) {
+                                  return s === "rejected" ? "rejected" : "";
+                                }
+                                if (isLogisticManager) {
+                                  return ["dispatch", "hold"].includes(s) ? s : "";
+                                }
+                                if (isFullStatusDropdownUser) {
+                                  return s;
+                                }
+                                return s === "rejected" ? "rejected" : "";
+                              })()
                             }
                             onChange={(e) => {
                               const next = e.target.value;
@@ -908,7 +957,7 @@ function OrdersPageContent() {
                             }}
                             className="text-sm px-3 py-2 rounded-lg border border-gray-300 bg-white text-gray-700 focus:border-blue-500 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                           >
-                            {user?.isManager && !user?.isCompanyAdmin && !user?.isSuperAdmin ? (
+                            {isCategoryManager ? (
                               <>
                                 <option value="">
                                   Select
@@ -916,7 +965,15 @@ function OrdersPageContent() {
                                 <option value="processing">Processing</option>
                                 <option value="rejected">Rejected</option>
                               </>
-                            ) : (
+                            ) : isLogisticManager ? (
+                              <>
+                                <option value="">
+                                  Select
+                                </option>
+                                <option value="dispatch">Dispatch</option>
+                                <option value="hold">Hold</option>
+                              </>
+                            ) : isFullStatusDropdownUser ? (
                               <>
                                 <option value="pending">Pending</option>
                                 <option value="approved">Approved</option>
@@ -924,10 +981,20 @@ function OrdersPageContent() {
                                 <option value="confirmed">Confirmed</option>
                                 <option value="processing">Processing</option>
                                 <option value="allocated">Allocated</option>
+                                <option value="dispatch">Dispatch</option>
+                                <option value="hold">Hold</option>
                                 <option value="dispatched">Dispatched</option>
                                 <option value="shipped">Shipped</option>
                                 <option value="completed">Completed</option>
                                 <option value="cancelled">Cancelled</option>
+                              </>
+                            ) : (
+                              <>
+                                <option value="">
+                                  Select
+                                </option>
+                                <option value="processing">Processing</option>
+                                <option value="rejected">Rejected</option>
                               </>
                             )}
                           </select>
@@ -1300,12 +1367,17 @@ function OrdersPageContent() {
                     className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-gray-900 focus:border-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-900/50 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                     required
                   >
-                    {user?.isManager && !user?.isCompanyAdmin && !user?.isSuperAdmin ? (
+                    {isCategoryManager ? (
                       <>
                         <option value="processing">Processing</option>
                         <option value="rejected">Rejected</option>
                       </>
-                    ) : (
+                    ) : isLogisticManager ? (
+                      <>
+                        <option value="dispatch">Dispatch</option>
+                        <option value="hold">Hold</option>
+                      </>
+                    ) : isFullStatusDropdownUser ? (
                       <>
                         <option value="pending">Pending</option>
                         <option value="approved">Approved</option>
@@ -1313,10 +1385,19 @@ function OrdersPageContent() {
                         <option value="confirmed">Confirmed</option>
                         <option value="processing">Processing</option>
                         <option value="allocated">Allocated</option>
+                        <option value="dispatch">Dispatch</option>
+                        <option value="hold">Hold</option>
                         <option value="dispatched">Dispatched</option>
                         <option value="shipped">Shipped</option>
                         <option value="completed">Completed</option>
                         <option value="cancelled">Cancelled</option>
+                      </>
+                    ) : (
+                      <>
+                        <option value="processing">Processing</option>
+                        <option value="rejected">Rejected</option>
+                        <option value="dispatch">Dispatch</option>
+                        <option value="hold">Hold</option>
                       </>
                     )}
                   </select>

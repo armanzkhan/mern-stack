@@ -95,7 +95,7 @@ export default function EditOrderPage() {
           customer: orderData.customer._id,
           items: orderData.items || [],
           notes: orderData.notes || "",
-          status: orderData.status || "pending"
+          status: ["dispatch", "hold"].includes(orderData.status) ? orderData.status : "hold"
         });
       }
 
@@ -331,11 +331,8 @@ export default function EditOrderPage() {
                   onChange={(e) => setFormData({...formData, status: e.target.value})}
                   className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 text-dark focus:border-primary focus:outline-none dark:border-dark-3 dark:bg-dark-2 dark:text-white transition-colors"
                 >
-                  <option value="pending">Pending</option>
-                  <option value="active">Active</option>
-                  <option value="processing">Processing</option>
-                  <option value="completed">Completed</option>
-                  <option value="cancelled">Cancelled</option>
+                  <option value="dispatch">Dispatch</option>
+                  <option value="hold">Hold</option>
                 </select>
               </div>
             </div>

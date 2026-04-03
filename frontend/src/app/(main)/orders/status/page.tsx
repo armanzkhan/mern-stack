@@ -24,6 +24,8 @@ interface Order {
 
 const getStatusColor = (status: string) => {
   switch (status.toLowerCase()) {
+    case 'dispatch': return 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900/20 dark:text-cyan-400';
+    case 'hold': return 'bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-400';
     case 'pending': return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400';
     case 'approved': return 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400';
     case 'rejected': return 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400';
@@ -135,30 +137,18 @@ export default function OrderStatusPage() {
       <Breadcrumb pageName="Order Status" />
       
       {/* Status Overview */}
-      <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-6">
+      <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark dark:shadow-card">
           <h3 className="text-2xl font-bold text-blue-600">{orders.length}</h3>
           <p className="text-sm text-gray-600 dark:text-gray-400">Total Orders</p>
         </div>
         <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark dark:shadow-card">
-          <h3 className="text-2xl font-bold text-yellow-600">{orders.filter(o => o.status === 'pending').length}</h3>
-          <p className="text-sm text-gray-600 dark:text-gray-400">Pending</p>
+          <h3 className="text-2xl font-bold text-cyan-600">{orders.filter(o => o.status === 'dispatch').length}</h3>
+          <p className="text-sm text-gray-600 dark:text-gray-400">Dispatch</p>
         </div>
         <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark dark:shadow-card">
-          <h3 className="text-2xl font-bold text-red-600">{orders.filter(o => o.status === 'rejected').length}</h3>
-          <p className="text-sm text-gray-600 dark:text-gray-400">Rejected</p>
-        </div>
-        <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark dark:shadow-card">
-          <h3 className="text-2xl font-bold text-blue-600">{orders.filter(o => o.status === 'active').length}</h3>
-          <p className="text-sm text-gray-600 dark:text-gray-400">Active</p>
-        </div>
-        <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark dark:shadow-card">
-          <h3 className="text-2xl font-bold text-purple-600">{orders.filter(o => o.status === 'processing').length}</h3>
-          <p className="text-sm text-gray-600 dark:text-gray-400">Processing</p>
-        </div>
-        <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark dark:shadow-card">
-          <h3 className="text-2xl font-bold text-green-600">{orders.filter(o => o.status === 'completed').length}</h3>
-          <p className="text-sm text-gray-600 dark:text-gray-400">Completed</p>
+          <h3 className="text-2xl font-bold text-orange-600">{orders.filter(o => o.status === 'hold').length}</h3>
+          <p className="text-sm text-gray-600 dark:text-gray-400">Hold</p>
         </div>
       </div>
 
@@ -174,13 +164,8 @@ export default function OrderStatusPage() {
               className="rounded border border-stroke bg-transparent px-3 py-1 text-sm text-dark focus:border-primary focus:outline-none dark:border-dark-3 dark:bg-dark-2 dark:text-white"
             >
               <option value="">All Status</option>
-              <option value="pending">Pending</option>
-              <option value="active">Active</option>
-              <option value="processing">Processing</option>
-              <option value="allocated">Allocated</option>
-              <option value="dispatched">Dispatched</option>
-              <option value="completed">Completed</option>
-              <option value="cancelled">Cancelled</option>
+              <option value="dispatch">Dispatch</option>
+              <option value="hold">Hold</option>
             </select>
             <input
               type="text"
@@ -243,13 +228,8 @@ export default function OrderStatusPage() {
                           onChange={(e) => handleStatusUpdate(order._id, e.target.value)}
                           className={`rounded-full px-3 py-1 text-xs font-medium border-0 ${getStatusColor(order.status)}`}
                         >
-                          <option value="pending">Pending</option>
-                          <option value="active">Active</option>
-                          <option value="processing">Processing</option>
-                          <option value="allocated">Allocated</option>
-                          <option value="dispatched">Dispatched</option>
-                          <option value="completed">Completed</option>
-                          <option value="cancelled">Cancelled</option>
+                          <option value="dispatch">Dispatch</option>
+                          <option value="hold">Hold</option>
                         </select>
                       </td>
                       <td className="px-4 py-3">

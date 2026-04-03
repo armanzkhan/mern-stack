@@ -1203,6 +1203,14 @@ class ItemApprovalService {
           title = 'Order Dispatched';
           message = `Your order #${order.orderNumber} has been dispatched`;
           break;
+        case 'dispatch':
+          title = 'Order Dispatch';
+          message = `Your order #${order.orderNumber} is marked as dispatch`;
+          break;
+        case 'hold':
+          title = 'Order On Hold';
+          message = `Your order #${order.orderNumber} is currently on hold`;
+          break;
         case 'shipped':
           title = 'Order Shipped';
           message = `Your order #${order.orderNumber} has been shipped`;
@@ -1220,7 +1228,7 @@ class ItemApprovalService {
         title: title,
         message: message,
         type: 'order_status_update',
-        priority: order.status === 'processing' || order.status === 'completed' ? 'high' : 'medium',
+        priority: order.status === 'dispatch' || order.status === 'processing' || order.status === 'completed' ? 'high' : 'medium',
         targetType: 'customer',
         targetIds: [order.customer],
         company_id: order.company_id,

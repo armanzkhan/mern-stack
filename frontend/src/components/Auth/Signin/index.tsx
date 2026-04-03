@@ -145,6 +145,9 @@ export default function Signin() {
       } else if (userData.isManager || userData.userType === 'manager') {
         console.log('🎯 Redirecting to manager approvals');
         window.location.href = "/manager-approvals";
+      } else if (userData.userType === 'logistic_manager' || userData.role === 'Logistic Manager' || userData.role === 'logistic_manager') {
+        console.log('🎯 Redirecting logistics manager to orders');
+        window.location.href = "/orders";
       } else if (decoded.roles && decoded.roles.length > 0) {
         console.log('🎯 Redirecting to dashboard (has roles)');
         window.location.href = "/dashboard";

@@ -33,6 +33,7 @@ exports.getUser = async (req, res) => {
 exports.createUser = async (req, res) => {
   try {
     const userData = req.body;
+    const isLogisticManager = userData.userType === 'logistic_manager';
     
     // Set default company_id if not provided
     if (!userData.company_id) {
@@ -72,6 +73,47 @@ exports.createUser = async (req, res) => {
         }
       } catch (roleError) {
         console.error("Error assigning customer role:", roleError);
+      }
+    }
+
+    // If this is a logistics manager, assign role and minimal logistics permissions
+    if (isLogisticManager) {
+      try {
+        const Role = require('../models/Role');
+        const Permission = require('../models/Permission');
+
+        // Ensure the canonical role exists and is assigned.
+        // If the role is missing, this account will have no recognizable role name in JWT,
+        // which breaks frontend redirects and dropdown logic.
+        let logisticRole = await Role.findOne({
+          name: 'Logistic Manager',
+          company_id: userData.company_id
+        });
+
+        if (!logisticRole) {
+          logisticRole = await Role.create({
+            name: 'Logistic Manager',
+            description: 'Logistic Manager role (dispatch/hold orders)',
+            company_id: userData.company_id,
+            permissionGroups: [],
+            permissions: [],
+            isActive: true
+          });
+        }
+
+        userData.roles = [logisticRole._id];
+
+        const logisticPermissions = await Permission.find({
+          key: { $in: ['orders.read', 'orders.update', 'notifications.read'] },
+          company_id: userData.company_id
+        });
+        userData.permissions = logisticPermissions.map(p => p._id);
+
+        // Keep this user type operational, not category-manager scoped.
+        userData.isManager = false;
+        userData.managerProfile = undefined;
+      } catch (roleError) {
+        console.error("Error assigning logistic manager role:", roleError);
       }
     }
 

@@ -40,9 +40,12 @@ export default function Dashboard() {
     } else if (userType === 'manager' || userRole === 'manager') {
       console.log('👨‍💼 Manager user, redirecting to manager dashboard');
       router.push("/manager-dashboard");
+    } else if (userType === 'logistic_manager' || userRole === 'logistic_manager' || userRole === 'Logistic Manager') {
+      console.log('🚚 Logistic manager user, redirecting to orders');
+      router.push("/orders");
     } else {
-      console.log('📊 Regular user, showing dashboard');
-      // Stay on dashboard for regular users
+      console.log('📊 Regular user, redirecting to orders');
+      router.push("/orders");
     }
   }, [isClient, router]);
 

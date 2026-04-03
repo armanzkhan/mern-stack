@@ -6,6 +6,39 @@ const Product = require("../models/Product");
 const notificationService = require("../services/notificationService");
 const managerSyncService = require("../services/managerSyncService");
 const { getAllCategories, getMainCategories } = require("../utils/productCategories");
+const LOGISTICS_STATUSES = ["dispatch", "hold"];
+const MANAGER_STATUSES = ["processing", "rejected"];
+const COMPANY_ADMIN_STATUSES = [
+  "pending",
+  "approved",
+  "rejected",
+  "confirmed",
+  "processing",
+  "allocated",
+  "dispatch",
+  "hold",
+  "dispatched",
+  "shipped",
+  "completed",
+  "cancelled"
+];
+
+const normalizeRoleName = (role) => String(role || "").toLowerCase().trim();
+
+const isLogisticManagerUser = (req) => {
+  const tokenRole = normalizeRoleName(req.user?.role);
+  const tokenRoles = Array.isArray(req.user?.roles) ? req.user.roles.map(normalizeRoleName) : [];
+  return tokenRole === "logistic manager" || tokenRole === "logistic_manager" ||
+    tokenRoles.includes("logistic manager") || tokenRoles.includes("logistic_manager");
+};
+
+const isCompanyAdminUser = (req) => {
+  const tokenRole = normalizeRoleName(req.user?.role);
+  const tokenRoles = Array.isArray(req.user?.roles) ? req.user.roles.map(normalizeRoleName) : [];
+  return req.user?.isCompanyAdmin === true ||
+    tokenRole === "company admin" || tokenRole === "company_admin" ||
+    tokenRoles.includes("company admin") || tokenRoles.includes("company_admin");
+};
 
 // Create or update manager profile
 exports.createOrUpdateManager = async (req, res) => {
@@ -825,6 +858,12 @@ exports.updateOrderStatus = async (req, res) => {
     const companyId = req.user.company_id;
     
     console.log('🔄 Backend updateOrderStatus called:', { orderId, status, comments, userId, companyId });
+    const allowedStatuses = isCompanyAdminUser(req) || req.user?.isSuperAdmin
+      ? COMPANY_ADMIN_STATUSES
+      : [...LOGISTICS_STATUSES, ...MANAGER_STATUSES];
+    if (status && !allowedStatuses.includes(String(status).toLowerCase())) {
+      return res.status(400).json({ message: `Invalid status. Allowed statuses are: ${allowedStatuses.join(", ")}.` });
+    }
 
     // Get manager's assigned categories
     const manager = await Manager.findOne({ user_id: userId, company_id: companyId });
@@ -880,7 +919,7 @@ exports.updateOrderStatus = async (req, res) => {
 
     // Update order status
     if (status) {
-      order.status = status;
+      order.status = String(status).toLowerCase();
     }
 
     // Update category-specific statuses
