@@ -162,9 +162,10 @@ function OrdersPageContent() {
         console.log('   Sample orders:', ordersData.slice(0, 2).map((o: Order) => o.orderNumber));
         setOrders(ordersData);
         
-        // Fetch invoices for all orders
+        // Fetch invoices in the background so orders render immediately.
+        // For large datasets, waiting on per-order invoice requests can keep the page spinner visible too long.
         const orderNumbers = ordersData.map((order: Order) => order.orderNumber);
-        await fetchInvoicesForOrders(orderNumbers);
+        void fetchInvoicesForOrders(orderNumbers);
       } else {
         if (handleAuthError(response.status, "Please log in to view orders")) {
           return;

@@ -397,6 +397,8 @@ exports.getOrders = async (req, res) => {
         return res.json([]);
       }
     } else {
+      const canViewAllCompanyOrders = req.user?.isSuperAdmin || isCompanyAdminUser(req);
+
       // Check if user is a manager by querying the database
       // (JWT token doesn't include isManager, so we need to check the database)
       fullUser = await User.findOne({ 
@@ -404,7 +406,9 @@ exports.getOrders = async (req, res) => {
         company_id: companyId 
       }).select('isManager managerProfile _id');
       
-      if (fullUser && fullUser.isManager) {
+      // Company admins / super admins should always see all company orders,
+      // even if their DB user record also has isManager=true.
+      if (!canViewAllCompanyOrders && fullUser && fullUser.isManager) {
         // For manager users, use OrderItemApproval as primary source (most reliable)
         console.log(`🔍 Manager user detected: ${req.user?.email}, user_id: ${req.user?.user_id}, User._id: ${fullUser._id}`);
         
@@ -523,6 +527,8 @@ exports.getOrders = async (req, res) => {
           console.log(`⚠️ Manager ${req.user?.email} has no assigned categories - returning empty result`);
           query = { company_id: companyId, _id: null }; // Return no orders
         }
+      } else if (canViewAllCompanyOrders) {
+        console.log(`🔓 Admin-level access for ${req.user?.email}: returning all company orders`);
       }
     }
     
