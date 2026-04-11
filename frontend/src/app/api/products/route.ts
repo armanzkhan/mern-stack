@@ -8,8 +8,11 @@ export async function GET(request: NextRequest) {
     const token = authHeader?.replace("Bearer ", "");
 
     const { searchParams } = new URL(request.url);
-    const limit = searchParams.get('limit') || '2000';
-    const queryString = searchParams.toString();
+    const includeMeta = searchParams.get("meta") === "1";
+    const limit = searchParams.get("limit") || "2000";
+    const backendParams = new URLSearchParams(searchParams);
+    backendParams.delete("meta");
+    const queryString = backendParams.toString();
     const url = `${API_BASE_URL}/api/products${queryString ? `?${queryString}` : `?limit=${limit}`}`;
 
     const response = await fetch(url, {
@@ -26,8 +29,16 @@ export async function GET(request: NextRequest) {
     }
 
     const productsData = await response.json();
-    // Handle backend response format (object with products array or direct array)
     const products = Array.isArray(productsData) ? productsData : productsData.products || [];
+    if (
+      includeMeta &&
+      productsData &&
+      typeof productsData === "object" &&
+      !Array.isArray(productsData) &&
+      productsData.pagination
+    ) {
+      return NextResponse.json({ products, pagination: productsData.pagination });
+    }
     return NextResponse.json(products);
   } catch (error) {
     console.error('Error fetching products:', error);

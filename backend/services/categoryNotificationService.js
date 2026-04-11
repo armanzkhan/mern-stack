@@ -17,6 +17,7 @@ class CategoryNotificationService {
       .toLowerCase()
       .trim()
       .replace(/\s+/g, ' ') // Normalize multiple spaces to single space
+      .replace(/\bspeciality\b/g, 'specialty') // UK vs US spelling in category names
       .replace(/\s*&\s*/g, ' and ') // Replace & with " and "
       .replace(/\s+and\s+/g, ' and ') // Normalize "and" spacing
       .trim();

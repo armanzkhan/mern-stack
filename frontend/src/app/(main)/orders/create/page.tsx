@@ -48,6 +48,74 @@ interface OrderItem {
   selectedCategory?: string; // Category filter for this item
 }
 
+/** Aligns with backend `categoryNotificationService` — "&" vs "and", spacing, case. */
+function normalizeCategoryName(category: string): string {
+  if (!category || typeof category !== "string") return "";
+  return category
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/\bspeciality\b/g, "specialty")
+    .replace(/\s*&\s*/g, " and ")
+    .replace(/\s+and\s+/g, " and ")
+    .trim();
+}
+
+function categoriesMatch(a: string, b: string): boolean {
+  const n1 = normalizeCategoryName(a);
+  const n2 = normalizeCategoryName(b);
+  if (!n1 || !n2) return false;
+  if (n1 === n2) return true;
+  if (n1.includes(n2) || n2.includes(n1)) return true;
+  return false;
+}
+
+/** Supports `{ mainCategory }` (normal) and legacy `category` as a plain string. */
+function getProductMainCategory(product: Product): string | null {
+  const c = product.category;
+  if (c == null) return null;
+  if (typeof c === "string") {
+    const s = c.trim();
+    return s ? s : null;
+  }
+  if (typeof c === "object" && c.mainCategory) {
+    const s = String(c.mainCategory).trim();
+    return s ? s : null;
+  }
+  return null;
+}
+
+/** One label per semantic category: merged manager + product lists used to add duplicates like "&" vs "and". */
+function dedupeCategoryDropdownLabels(
+  merged: string[],
+  productDerived: string[]
+): string[] {
+  const groups = new Map<string, string[]>();
+  for (const label of merged) {
+    const key = normalizeCategoryName(label);
+    if (!key) continue;
+    const list = groups.get(key) ?? [];
+    if (!list.includes(label)) list.push(label);
+    groups.set(key, list);
+  }
+
+  const out: string[] = [];
+  for (const variants of groups.values()) {
+    let chosen: string | undefined;
+    for (const p of productDerived) {
+      if (variants.some((v) => categoriesMatch(v, p))) {
+        chosen = p;
+        break;
+      }
+    }
+    out.push(
+      chosen ??
+        variants.slice().sort((a, b) => a.localeCompare(b))[0]
+    );
+  }
+  return out.sort((a, b) => a.localeCompare(b));
+}
+
 export default function CreateOrderPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -90,16 +158,11 @@ export default function CreateOrderPage() {
       // If customer has assigned managers, filter products by their categories
       if (customerManagerCategories.length > 0) {
         return products.filter(product => {
-          if (product.category && typeof product.category === 'object' && product.category.mainCategory) {
-            const mainCategory = product.category.mainCategory;
-            // Check if product's category matches any of the assigned managers' categories
-            return customerManagerCategories.some(assignedCat => {
-              return assignedCat === mainCategory || 
-                     assignedCat.includes(mainCategory) || 
-                     mainCategory.includes(assignedCat);
-            });
-          }
-          return false;
+          const mainCategory = getProductMainCategory(product);
+          if (!mainCategory) return false;
+          return customerManagerCategories.some(assignedCat =>
+            categoriesMatch(assignedCat, mainCategory)
+          );
         });
       }
       // If no managers assigned, show all products
@@ -111,20 +174,17 @@ export default function CreateOrderPage() {
       const assignedCategories = managerProfile.assignedCategories;
 
       return products.filter(product => {
-        // Category is always an object with { mainCategory, subCategory, subSubCategory }
-        if (product.category && typeof product.category === 'object' && product.category.mainCategory) {
-          const categoryObj = product.category;
-          const mainCategory = categoryObj.mainCategory;
-          
-          // Check if any assigned category matches the product's mainCategory
-          return assignedCategories.some((assignedCat: any) => {
-            // Exact match or substring match
-            return assignedCat === mainCategory || 
-                   assignedCat.includes(mainCategory) || 
-                   mainCategory.includes(assignedCat);
-          });
-        }
-        return false;
+        const mainCategory = getProductMainCategory(product);
+        if (!mainCategory) return false;
+        return assignedCategories.some((assignedCat: unknown) => {
+          const ac =
+            typeof assignedCat === "string"
+              ? assignedCat
+              : (assignedCat as { category?: string; name?: string }).category ||
+                (assignedCat as { name?: string }).name ||
+                "";
+          return ac ? categoriesMatch(ac, mainCategory) : false;
+        });
       });
     }
 
@@ -142,13 +202,9 @@ export default function CreateOrderPage() {
     }
 
     return baseProducts.filter(product => {
-      // Category is always an object with { mainCategory, subCategory, subSubCategory }
-      if (product.category && typeof product.category === 'object' && product.category.mainCategory) {
-        const mainCategory = product.category.mainCategory;
-        // Exact match on mainCategory
-        return mainCategory === selectedCategory;
-      }
-      return false;
+      const mainCategory = getProductMainCategory(product);
+      if (!mainCategory) return false;
+      return categoriesMatch(mainCategory, selectedCategory);
     });
   };
 
@@ -159,10 +215,8 @@ export default function CreateOrderPage() {
     const baseProducts = getFilteredProducts();
 
     baseProducts.forEach(product => {
-      // Category is always an object with { mainCategory, subCategory, subSubCategory }
-      if (product.category && typeof product.category === 'object' && product.category.mainCategory) {
-        categorySet.add(product.category.mainCategory);
-      }
+      const main = getProductMainCategory(product);
+      if (main) categorySet.add(main);
     });
 
     return Array.from(categorySet).sort();
@@ -180,11 +234,10 @@ export default function CreateOrderPage() {
 
     if (user?.userType === "customer" || user?.isCustomer) {
       if (customerManagerCategories.length > 0) {
-        const merged = new Set<string>([
-          ...customerManagerCategories,
-          ...fromProducts,
-        ]);
-        return Array.from(merged).sort((a, b) => a.localeCompare(b));
+        return dedupeCategoryDropdownLabels(
+          [...customerManagerCategories, ...fromProducts],
+          fromProducts
+        );
       }
       return fromProducts;
     }
@@ -195,8 +248,7 @@ export default function CreateOrderPage() {
           typeof cat === "string" ? cat : (cat as { category?: string; name?: string }).category || (cat as { name?: string }).name || ""
         )
         .filter(Boolean) as string[];
-      const merged = new Set<string>([...fromManager, ...fromProducts]);
-      return Array.from(merged).sort((a, b) => a.localeCompare(b));
+      return dedupeCategoryDropdownLabels([...fromManager, ...fromProducts], fromProducts);
     }
 
     return fromProducts;
@@ -220,18 +272,49 @@ export default function CreateOrderPage() {
     });
   };
 
+  /** Load every active product (backend paginates; avoids missing items beyond the first page). */
+  const fetchAllProductsForOrderForm = async (): Promise<Product[]> => {
+    const pageSize = 500;
+    let page = 1;
+    const all: Product[] = [];
+    try {
+      for (;;) {
+        const productsRes = await fetch(
+          `/api/products?limit=${pageSize}&page=${page}&meta=1`,
+          { headers: getAuthHeaders() }
+        );
+        if (!productsRes.ok) {
+          console.error("Products fetch failed:", productsRes.status);
+          return all.length > 0 ? all : [];
+        }
+        const raw: unknown = await productsRes.json();
+        if (Array.isArray(raw)) {
+          all.push(...raw);
+          break;
+        }
+        const body = raw as { products?: Product[]; pagination?: { totalPages?: number } };
+        const chunk = body.products || [];
+        all.push(...chunk);
+        const totalPages = body.pagination?.totalPages ?? 1;
+        if (page >= totalPages || chunk.length === 0) break;
+        page += 1;
+      }
+    } catch (e) {
+      console.error("Error loading products:", e);
+    }
+    return all;
+  };
+
   // Fetch customers, products, categories, and manager profile
   const fetchData = async () => {
     try {
       setLoading(true);
       
-      const [customersRes, productsRes, categoriesRes, managerRes] = await Promise.all([
+      const [customersRes, productsList, categoriesRes, managerRes] = await Promise.all([
         fetch('/api/customers', {
           headers: getAuthHeaders(),
         }),
-        fetch('/api/products?limit=2000', {
-          headers: getAuthHeaders(),
-        }),
+        fetchAllProductsForOrderForm(),
         fetch('/api/products/categories', {
           headers: getAuthHeaders(),
         }),
@@ -252,13 +335,7 @@ export default function CreateOrderPage() {
         setCustomers([]);
       }
 
-      if (productsRes.ok) {
-        const productsData = await productsRes.json();
-        const products = Array.isArray(productsData) ? productsData : productsData.products || [];
-        setProducts(products);
-      } else {
-        setProducts([]);
-      }
+      setProducts(productsList);
 
       if (categoriesRes.ok) {
         const categoriesData = await categoriesRes.json();
