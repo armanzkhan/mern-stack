@@ -168,6 +168,40 @@ export default function CreateOrderPage() {
     return Array.from(categorySet).sort();
   };
 
+  /**
+   * Categories shown in the Order Items "Category" dropdown.
+   * Previously this was only {@link getUniqueCategories} (categories that already have products),
+   * so customers saw fewer options than their manager's assigned count (e.g. 6 vs 8).
+   * We merge assigned manager categories with product-derived categories so all allowed
+   * categories appear; empty categories still show "no products" in the product picker.
+   */
+  const getCategoryOptionsForDropdown = (): string[] => {
+    const fromProducts = getUniqueCategories();
+
+    if (user?.userType === "customer" || user?.isCustomer) {
+      if (customerManagerCategories.length > 0) {
+        const merged = new Set<string>([
+          ...customerManagerCategories,
+          ...fromProducts,
+        ]);
+        return Array.from(merged).sort((a, b) => a.localeCompare(b));
+      }
+      return fromProducts;
+    }
+
+    if (managerProfile?.assignedCategories?.length) {
+      const fromManager = managerProfile.assignedCategories
+        .map((cat: unknown) =>
+          typeof cat === "string" ? cat : (cat as { category?: string; name?: string }).category || (cat as { name?: string }).name || ""
+        )
+        .filter(Boolean) as string[];
+      const merged = new Set<string>([...fromManager, ...fromProducts]);
+      return Array.from(merged).sort((a, b) => a.localeCompare(b));
+    }
+
+    return fromProducts;
+  };
+
   // Filter products by search term (searches name, SKU, and description)
   const getFilteredProductsBySearch = (itemIndex: number, category?: string) => {
     const baseProducts = getProductsByCategory(category);
@@ -1463,7 +1497,7 @@ export default function CreateOrderPage() {
                             className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 text-dark focus:border-primary focus:outline-none dark:border-dark-3 dark:bg-dark-2 dark:text-white transition-colors"
                           >
                             <option value="">All Categories</option>
-                            {getUniqueCategories().map(category => (
+                            {getCategoryOptionsForDropdown().map(category => (
                               <option key={category} value={category}>
                                 {category}
                               </option>
