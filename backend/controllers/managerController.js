@@ -275,86 +275,24 @@ exports.getManagerProfile = async (req, res) => {
     let assignedCustomers = [];
     
     if (managerIds.length > 0) {
-      // First, let's check all customers in the company to see their assignments
-      const allCustomers = await Customer.find({
+      // Query ALL active customers whose assignment references this Manager document(s).
+      // Previously this used .limit(100) on the full customer list then filtered in memory,
+      // so only ~100 customers were ever scanned and counts were wrong (e.g. 21 instead of hundreds).
+      assignedCustomers = await Customer.find({
         company_id: companyId,
-        status: 'active'
+        status: 'active',
+        $or: [
+          { 'assignedManager.manager_id': { $in: managerIds } },
+          { 'assignedManagers.manager_id': { $in: managerIds } },
+        ],
       })
-        .select('_id companyName contactName email phone assignedManager assignedManagers')
-        .populate('assignedManager.manager_id', 'user_id _id')
-        .populate('assignedManagers.manager_id', 'user_id _id')
-        .limit(100);
-      
-      console.log(`🔍 Checking ${allCustomers.length} customers in company ${companyId}`);
-      console.log(`🔍 Looking for manager IDs: ${managerIds.map(id => String(id)).join(', ')}`);
-      
-      // Also check for customer "zamar@gmail.com" specifically for debugging
-      const zamarCustomer = allCustomers.find(c => c.email === 'zamar@gmail.com');
-      if (zamarCustomer) {
-        console.log(`🔍 Found zamar@gmail.com customer:`, {
-          _id: String(zamarCustomer._id),
-          companyName: zamarCustomer.companyName,
-          hasAssignedManager: !!zamarCustomer.assignedManager?.manager_id,
-          assignedManagersCount: zamarCustomer.assignedManagers?.length || 0
-        });
-        if (zamarCustomer.assignedManager?.manager_id) {
-          const amId = zamarCustomer.assignedManager.manager_id;
-          const amIdStr = typeof amId === 'object' ? String(amId._id || amId) : String(amId);
-          console.log(`  assignedManager.manager_id: ${amIdStr}`);
-        }
-        if (zamarCustomer.assignedManagers && zamarCustomer.assignedManagers.length > 0) {
-          zamarCustomer.assignedManagers.forEach((am, idx) => {
-            if (am.manager_id) {
-              const amIdStr = typeof am.manager_id === 'object' ? String(am.manager_id._id || am.manager_id) : String(am.manager_id);
-              console.log(`  assignedManagers[${idx}].manager_id: ${amIdStr}`);
-            }
-          });
-        }
-      } else {
-        console.log(`⚠️ Customer zamar@gmail.com not found in active customers`);
-      }
-      
-      // Filter customers that have this manager assigned
-      assignedCustomers = allCustomers.filter(customer => {
-        // Check legacy assignedManager
-        if (customer.assignedManager?.manager_id) {
-          const assignedManagerId = customer.assignedManager.manager_id;
-          const managerIdStr = typeof assignedManagerId === 'object' 
-            ? String(assignedManagerId._id || assignedManagerId) 
-            : String(assignedManagerId);
-          
-          const matches = managerIds.some(id => String(id) === managerIdStr);
-          if (matches) {
-            console.log(`✅ Customer ${customer.companyName} (${customer.email}) found via assignedManager: ${managerIdStr}`);
-            return true;
-          } else {
-            console.log(`❌ Customer ${customer.companyName} (${customer.email}) assignedManager.manager_id ${managerIdStr} does NOT match any of: ${managerIds.map(id => String(id)).join(', ')}`);
-          }
-        }
-        
-        // Check assignedManagers array
-        if (customer.assignedManagers && Array.isArray(customer.assignedManagers)) {
-          for (const am of customer.assignedManagers) {
-            if (am.manager_id) {
-              const managerIdStr = typeof am.manager_id === 'object' 
-                ? String(am.manager_id._id || am.manager_id) 
-                : String(am.manager_id);
-              
-              const matches = managerIds.some(id => String(id) === managerIdStr);
-              if (matches) {
-                console.log(`✅ Customer ${customer.companyName} (${customer.email}) found via assignedManagers: ${managerIdStr}`);
-                return true;
-              } else {
-                console.log(`❌ Customer ${customer.companyName} (${customer.email}) assignedManagers[].manager_id ${managerIdStr} does NOT match any of: ${managerIds.map(id => String(id)).join(', ')}`);
-              }
-            }
-          }
-        }
-        
-        return false;
-      });
-      
-      console.log(`👥 Filtered to ${assignedCustomers.length} assigned customers`);
+        .select('_id companyName contactName email phone')
+        .sort({ companyName: 1 })
+        .lean();
+
+      console.log(
+        `👥 Found ${assignedCustomers.length} customers assigned to manager ID(s): ${managerIds.map((id) => String(id)).join(', ')} (company ${companyId})`
+      );
     } else {
       console.log('⚠️ No manager IDs to search with - manager may not have a Manager record');
       console.log('⚠️ Manager object:', {
@@ -373,24 +311,6 @@ exports.getManagerProfile = async (req, res) => {
     }
     
     console.log('👥 Final assigned customers count:', assignedCustomers.length);
-    assignedCustomers.forEach(c => {
-      console.log(`  - ${c.companyName} (${c.email})`);
-      console.log(`    assignedManagers count: ${c.assignedManagers?.length || 0}`);
-      if (c.assignedManagers && c.assignedManagers.length > 0) {
-        c.assignedManagers.forEach((am, idx) => {
-          const managerIdStr = typeof am.manager_id === 'object' 
-            ? String(am.manager_id._id || am.manager_id) 
-            : String(am.manager_id);
-          console.log(`    [${idx}] manager_id: ${managerIdStr}`);
-        });
-      }
-      if (c.assignedManager?.manager_id) {
-        const managerIdStr = typeof c.assignedManager.manager_id === 'object' 
-          ? String(c.assignedManager.manager_id._id || c.assignedManager.manager_id) 
-          : String(c.assignedManager.manager_id);
-        console.log(`    legacy assignedManager.manager_id: ${managerIdStr}`);
-      }
-    });
 
     // Format assignedCategories - handle both object and string formats
     let categories = [];

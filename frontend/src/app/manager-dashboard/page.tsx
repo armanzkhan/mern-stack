@@ -2,7 +2,7 @@
 
 import { ProtectedRoute } from "@/components/Auth/ProtectedRoute";
 import Breadcrumb from "@/components/Breadcrumbs/Breadcrumb";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 
 // Carousel images - using local images from public/images/carasoul folder
@@ -145,6 +145,7 @@ export default function ManagerDashboard() {
   const [orderComments, setOrderComments] = useState("");
   const [message, setMessage] = useState("");
   const [currentCarouselIndex, setCurrentCarouselIndex] = useState(0);
+  const [customerSearch, setCustomerSearch] = useState("");
   
   // Auto-rotate carousel
   useEffect(() => {
@@ -187,6 +188,18 @@ export default function ManagerDashboard() {
   const [discountComments, setDiscountComments] = useState("");
   
   const router = useRouter();
+
+  const filteredAssignedCustomers = useMemo(() => {
+    const list = profile?.assignedCustomers;
+    if (!list?.length) return [];
+    const q = customerSearch.trim().toLowerCase();
+    if (!q) return list;
+    return list.filter((c) =>
+      [c.companyName, c.contactName, c.email, c.phone]
+        .filter(Boolean)
+        .some((field) => String(field).toLowerCase().includes(q))
+    );
+  }, [profile?.assignedCustomers, customerSearch]);
 
   // Fetch manager profile
   const fetchProfile = async () => {
@@ -1124,11 +1137,47 @@ export default function ManagerDashboard() {
             {/* Assigned Customers */}
             {profile.assignedCustomers && profile.assignedCustomers.length > 0 && (
               <div className="mt-4 p-4 rounded-lg bg-white dark:bg-dark-2 border border-stroke dark:border-dark-3">
-                <h3 className="text-lg font-semibold text-dark dark:text-white mb-4">
-                  Your Assigned Customers ({profile.assignedCustomers.length})
-                </h3>
+                <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h3 className="text-lg font-semibold text-dark dark:text-white">
+                      Your Assigned Customers ({profile.assignedCustomers.length})
+                    </h3>
+                    {customerSearch.trim() && (
+                      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                        Showing {filteredAssignedCustomers.length} match
+                        {filteredAssignedCustomers.length !== 1 ? "es" : ""}
+                      </p>
+                    )}
+                  </div>
+                  <div className="relative w-full sm:max-w-md">
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                    <input
+                      type="search"
+                      value={customerSearch}
+                      onChange={(e) => setCustomerSearch(e.target.value)}
+                      placeholder="Search by company, contact, email, phone..."
+                      className="w-full rounded-lg border border-stroke bg-white py-2.5 pl-10 pr-10 text-sm text-dark placeholder:text-gray-400 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary dark:border-dark-3 dark:bg-dark-2 dark:text-white"
+                      aria-label="Search assigned customers"
+                    />
+                    {customerSearch && (
+                      <button
+                        type="button"
+                        onClick={() => setCustomerSearch("")}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-dark dark:hover:bg-dark-3"
+                        aria-label="Clear search"
+                      >
+                        <XCircle className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+                {filteredAssignedCustomers.length === 0 ? (
+                  <p className="text-sm text-gray-500 dark:text-gray-400 py-6 text-center">
+                    No customers match &quot;{customerSearch.trim()}&quot;. Try another search or clear the filter.
+                  </p>
+                ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {profile.assignedCustomers.map((customer) => (
+                  {filteredAssignedCustomers.map((customer) => (
                     <div key={customer._id} className="border border-gray-200 dark:border-dark-3 rounded-lg p-3 hover:shadow-md transition-shadow">
                       <div className="flex items-start gap-3">
                         <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/20 flex items-center justify-center flex-shrink-0">
@@ -1154,6 +1203,7 @@ export default function ManagerDashboard() {
                     </div>
                   ))}
                 </div>
+                )}
               </div>
             )}
           </div>

@@ -365,6 +365,8 @@ exports.getOrders = async (req, res) => {
   try {
     const companyId = req.headers['x-company-id'] || req.user?.company_id || "RESSICHEM";
     
+    const canViewAllCompanyOrders = req.user?.isSuperAdmin || isCompanyAdminUser(req);
+
     // Check if user is a customer - if so, filter by their orders only
     let query = { company_id: companyId };
     let fullUser = null; // Declare outside to use later
@@ -397,7 +399,6 @@ exports.getOrders = async (req, res) => {
         return res.json([]);
       }
     } else {
-      const canViewAllCompanyOrders = req.user?.isSuperAdmin || isCompanyAdminUser(req);
 
       // Check if user is a manager by querying the database
       // (JWT token doesn't include isManager, so we need to check the database)
@@ -537,6 +538,154 @@ exports.getOrders = async (req, res) => {
       .populate("items.product", "name price category")
       .populate("createdBy", "email firstName lastName")
       .sort({ createdAt: -1 });
+
+    // For admin-level views, include assigned manager names/emails for each customer
+    // so company admin / super admin can see who owns each customer's orders.
+    if (canViewAllCompanyOrders && orders.length > 0) {
+      const customerIds = [
+        ...new Set(
+          orders
+            .map((order) => order.customer?._id?.toString())
+            .filter(Boolean)
+        ),
+      ];
+
+      if (customerIds.length > 0) {
+        const customers = await Customer.find({
+          _id: { $in: customerIds },
+          company_id: companyId,
+        })
+          .select("assignedManager assignedManagers")
+          .lean();
+
+        const customerById = new Map();
+        const managerIds = new Set();
+
+        for (const customer of customers) {
+          const customerId = customer._id.toString();
+          customerById.set(customerId, customer);
+
+          if (customer.assignedManager?.manager_id) {
+            managerIds.add(customer.assignedManager.manager_id.toString());
+          }
+
+          if (Array.isArray(customer.assignedManagers)) {
+            for (const assigned of customer.assignedManagers) {
+              if (assigned?.manager_id) {
+                managerIds.add(assigned.manager_id.toString());
+              }
+            }
+          }
+        }
+
+        const managers = await Manager.find({
+          _id: { $in: Array.from(managerIds) },
+          company_id: companyId,
+        })
+          .select("_id user_id")
+          .lean();
+
+        const userIds = [
+          ...new Set(managers.map((manager) => manager.user_id).filter(Boolean)),
+        ];
+
+        const users = await User.find({
+          user_id: { $in: userIds },
+          company_id: companyId,
+        })
+          .select("user_id email firstName lastName")
+          .lean();
+
+        const userByUserId = new Map(users.map((user) => [user.user_id, user]));
+        const managerLabelById = new Map();
+
+        for (const manager of managers) {
+          const user = userByUserId.get(manager.user_id);
+          if (!user) continue;
+
+          const fullName = `${user.firstName || ""} ${user.lastName || ""}`.trim();
+          const label = fullName ? `${fullName} (${user.email})` : user.email;
+          managerLabelById.set(manager._id.toString(), label || manager.user_id);
+        }
+
+        const orderIds = orders.map((order) => order._id);
+        const OrderItemApproval = require("../models/OrderItemApproval");
+        const orderApprovalRows = await OrderItemApproval.find({
+          orderId: { $in: orderIds },
+          company_id: companyId,
+          assignedManager: { $ne: null },
+        })
+          .select("orderId assignedManager")
+          .lean();
+
+        const approvalManagerIds = [
+          ...new Set(
+            orderApprovalRows
+              .map((row) => row.assignedManager?.toString())
+              .filter(Boolean)
+          ),
+        ];
+
+        const approvalUsers = approvalManagerIds.length
+          ? await User.find({
+              _id: { $in: approvalManagerIds },
+              company_id: companyId,
+            })
+              .select("_id email firstName lastName")
+              .lean()
+          : [];
+
+        const approvalUserLabelById = new Map(
+          approvalUsers.map((user) => {
+            const fullName = `${user.firstName || ""} ${user.lastName || ""}`.trim();
+            const label = fullName ? `${fullName} (${user.email})` : user.email;
+            return [user._id.toString(), label || user._id.toString()];
+          })
+        );
+
+        const approvalManagersByOrderId = new Map();
+        for (const row of orderApprovalRows) {
+          const orderId = row.orderId?.toString();
+          const managerId = row.assignedManager?.toString();
+          if (!orderId || !managerId) continue;
+          if (!approvalManagersByOrderId.has(orderId)) {
+            approvalManagersByOrderId.set(orderId, new Set());
+          }
+          approvalManagersByOrderId
+            .get(orderId)
+            .add(approvalUserLabelById.get(managerId) || managerId);
+        }
+
+        orders = orders.map((order) => {
+          const plainOrder = order.toObject();
+          const customerId = plainOrder.customer?._id?.toString();
+          const customerRecord = customerById.get(customerId);
+          const managerLabels = new Set();
+          const orderApprovalManagerLabels =
+            approvalManagersByOrderId.get(order._id.toString()) || new Set();
+
+          if (customerRecord?.assignedManager?.manager_id) {
+            const managerId = customerRecord.assignedManager.manager_id.toString();
+            managerLabels.add(managerLabelById.get(managerId) || managerId);
+          }
+
+          if (Array.isArray(customerRecord?.assignedManagers)) {
+            for (const assigned of customerRecord.assignedManagers) {
+              if (!assigned?.manager_id) continue;
+              const managerId = assigned.manager_id.toString();
+              managerLabels.add(managerLabelById.get(managerId) || managerId);
+            }
+          }
+
+          if (plainOrder.customer) {
+            plainOrder.customer.assignedManagerNames = Array.from(managerLabels);
+          }
+          plainOrder.orderApprovalManagerNames = Array.from(orderApprovalManagerLabels);
+
+          return plainOrder;
+        });
+      }
+    }
     
     // For managers, the query above already filtered by OrderItemApproval or normalized categories
     // So we don't need additional filtering here - the orders are already correct

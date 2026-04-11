@@ -19,6 +19,7 @@ interface Order {
     companyName: string;
     contactName: string;
     email: string;
+    assignedManagerNames?: string[];
   };
   status: string;
   total: number;
@@ -33,6 +34,13 @@ interface Order {
   notes?: string;
   approvalStatus?: string;
   categories?: string[];
+  orderApprovalManagerNames?: string[];
+}
+
+interface OrderRow {
+  order: Order;
+  rowManagerLabel?: string;
+  rowKey: string;
 }
 
 interface OrderItem {
@@ -74,6 +82,7 @@ function OrdersPageContent() {
   const [invoiceOrder, setInvoiceOrder] = useState<Order | null>(null);
   const [invoiceLoading, setInvoiceLoading] = useState(false);
   const [orderInvoices, setOrderInvoices] = useState<{[key: string]: any[]}>({});
+  const [expandByManager, setExpandByManager] = useState(false);
   
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -305,6 +314,30 @@ function OrdersPageContent() {
     
     return matchesSearch && matchesStatus && matchesManagerCategories;
   });
+
+  const canUseManagerExpandedView = !!(user?.isCompanyAdmin || user?.isSuperAdmin);
+  const displayedOrderRows: OrderRow[] =
+    canUseManagerExpandedView && expandByManager
+      ? filteredOrders.flatMap((order) => {
+          const labels =
+            (order.orderApprovalManagerNames && order.orderApprovalManagerNames.length > 0
+              ? order.orderApprovalManagerNames
+              : order.customer?.assignedManagerNames) || [];
+          if (labels.length === 0) {
+            return [{ order, rowManagerLabel: "Not assigned", rowKey: `${order._id}::unassigned` }];
+          }
+
+          return labels.map((label, index) => ({
+            order,
+            rowManagerLabel: label,
+            rowKey: `${order._id}::${index}::${label}`,
+          }));
+        })
+      : filteredOrders.map((order) => ({ order, rowKey: order._id }));
+
+  const uniqueOrdersCount = filteredOrders.length;
+  const expandedRowsCount = displayedOrderRows.length;
+  const overlapCount = Math.max(0, expandedRowsCount - uniqueOrdersCount);
 
   // Handle delete order
   const handleDeleteOrder = async (orderId: string, orderNumber: string) => {
@@ -616,10 +649,14 @@ function OrdersPageContent() {
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-blue-600 dark:text-blue-400">Total Orders</p>
                   <p className="text-2xl font-bold text-blue-900 dark:text-blue-100 mt-1">
-                    {filteredOrders.length}
+                    {displayedOrderRows.length}
                   </p>
                   <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
-                    {user?.isManager ? 'Your category orders' : 'All orders'}
+                    {canUseManagerExpandedView && expandByManager
+                      ? 'Order x Manager rows'
+                      : user?.isManager
+                      ? 'Your category orders'
+                      : 'All orders'}
                   </p>
                 </div>
                 <div className="w-10 h-10 bg-blue-900 rounded-lg flex items-center justify-center shadow-lg flex-shrink-0">
@@ -635,7 +672,7 @@ function OrdersPageContent() {
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-blue-600 dark:text-blue-400">Pending</p>
                   <p className="text-2xl font-bold text-blue-900 dark:text-blue-100 mt-1">
-                    {filteredOrders.filter(o => o.status === 'pending').length}
+                    {displayedOrderRows.filter(({ order }) => order.status === 'pending').length}
                   </p>
                   <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">Awaiting processing</p>
                 </div>
@@ -652,7 +689,7 @@ function OrdersPageContent() {
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-blue-600 dark:text-blue-400">Approved</p>
                   <p className="text-2xl font-bold text-blue-900 dark:text-blue-100 mt-1">
-                    {filteredOrders.filter(o => o.status === 'approved').length}
+                    {displayedOrderRows.filter(({ order }) => order.status === 'approved').length}
                   </p>
                   <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">Approved orders</p>
                 </div>
@@ -669,7 +706,7 @@ function OrdersPageContent() {
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-blue-600 dark:text-blue-400">Completed</p>
                   <p className="text-2xl font-bold text-blue-900 dark:text-blue-100 mt-1">
-                    {filteredOrders.filter(o => o.status === 'completed').length}
+                    {displayedOrderRows.filter(({ order }) => order.status === 'completed').length}
                   </p>
                   <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">Successfully delivered</p>
                 </div>
@@ -701,52 +738,64 @@ function OrdersPageContent() {
                   </svg>
                 </div>
               </div>
-              <div className="w-full sm:w-48">
-                <div className="relative">
-                  <select
-                    value={statusFilter}
-                    onChange={(e) => setStatusFilter(e.target.value)}
-                    className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 pr-8 text-gray-900 focus:border-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-900/50 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:focus:border-blue-400 appearance-none transition-all duration-300 text-sm"
-                  >
-                    <option value="">All Status</option>
-                    {isCategoryManager ? (
-                      <>
-                        <option value="processing">Processing</option>
-                        <option value="rejected">Rejected</option>
-                      </>
-                    ) : isLogisticManager ? (
-                      <>
-                        <option value="dispatch">Dispatch</option>
-                        <option value="hold">Hold</option>
-                      </>
-                    ) : isFullStatusDropdownUser ? (
-                      <>
-                        <option value="pending">Pending</option>
-                        <option value="approved">Approved</option>
-                        <option value="rejected">Rejected</option>
-                        <option value="confirmed">Confirmed</option>
-                        <option value="processing">Processing</option>
-                        <option value="allocated">Allocated</option>
-                        <option value="dispatch">Dispatch</option>
-                        <option value="hold">Hold</option>
-                        <option value="dispatched">Dispatched</option>
-                        <option value="shipped">Shipped</option>
-                        <option value="completed">Completed</option>
-                        <option value="cancelled">Cancelled</option>
-                      </>
-                    ) : (
-                      <>
-                        <option value="processing">Processing</option>
-                        <option value="rejected">Rejected</option>
-                        <option value="dispatch">Dispatch</option>
-                        <option value="hold">Hold</option>
-                      </>
-                    )}
-                  </select>
-                  <svg className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <div className="w-full sm:w-48">
+                  <div className="relative">
+                    <select
+                      value={statusFilter}
+                      onChange={(e) => setStatusFilter(e.target.value)}
+                      className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 pr-8 text-gray-900 focus:border-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-900/50 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:focus:border-blue-400 appearance-none transition-all duration-300 text-sm"
+                    >
+                      <option value="">All Status</option>
+                      {isCategoryManager ? (
+                        <>
+                          <option value="processing">Processing</option>
+                          <option value="rejected">Rejected</option>
+                        </>
+                      ) : isLogisticManager ? (
+                        <>
+                          <option value="dispatch">Dispatch</option>
+                          <option value="hold">Hold</option>
+                        </>
+                      ) : isFullStatusDropdownUser ? (
+                        <>
+                          <option value="pending">Pending</option>
+                          <option value="approved">Approved</option>
+                          <option value="rejected">Rejected</option>
+                          <option value="confirmed">Confirmed</option>
+                          <option value="processing">Processing</option>
+                          <option value="allocated">Allocated</option>
+                          <option value="dispatch">Dispatch</option>
+                          <option value="hold">Hold</option>
+                          <option value="dispatched">Dispatched</option>
+                          <option value="shipped">Shipped</option>
+                          <option value="completed">Completed</option>
+                          <option value="cancelled">Cancelled</option>
+                        </>
+                      ) : (
+                        <>
+                          <option value="processing">Processing</option>
+                          <option value="rejected">Rejected</option>
+                          <option value="dispatch">Dispatch</option>
+                          <option value="hold">Hold</option>
+                        </>
+                      )}
+                    </select>
+                    <svg className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </div>
                 </div>
+
+                {canUseManagerExpandedView && (
+                  <button
+                    type="button"
+                    onClick={() => setExpandByManager((prev) => !prev)}
+                    className="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm font-medium text-gray-700 hover:border-blue-900 hover:text-blue-900 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:hover:border-blue-400 dark:hover:text-blue-300 transition-all duration-300"
+                  >
+                    {expandByManager ? "Show Unique Orders" : "Expand by Manager"}
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -757,9 +806,19 @@ function OrdersPageContent() {
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
             <h2 className="text-lg font-bold text-blue-900 dark:text-white">Orders</h2>
             <div className="text-sm text-gray-500 dark:text-gray-400">
-              {filteredOrders.length} order{filteredOrders.length !== 1 ? 's' : ''} found
+              {displayedOrderRows.length} {canUseManagerExpandedView && expandByManager ? 'row' : 'order'}{displayedOrderRows.length !== 1 ? 's' : ''} found
             </div>
           </div>
+
+          {canUseManagerExpandedView && (
+            <div className="mb-3 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800 dark:border-blue-900/40 dark:bg-blue-900/20 dark:text-blue-200">
+              Unique Orders: <span className="font-semibold">{uniqueOrdersCount}</span>
+              {" | "}
+              Expanded Rows: <span className="font-semibold">{expandedRowsCount}</span>
+              {" | "}
+              Overlap: <span className="font-semibold">{overlapCount}</span>
+            </div>
+          )}
           
           {loading ? (
             <div className="flex items-center justify-center py-8">
@@ -768,11 +827,11 @@ function OrdersPageContent() {
                 <p className="mt-3 text-sm text-gray-600 dark:text-gray-400">Loading orders...</p>
               </div>
             </div>
-          ) : filteredOrders.length > 0 ? (
+          ) : displayedOrderRows.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredOrders.map((order) => (
+              {displayedOrderRows.map(({ order, rowManagerLabel, rowKey }) => (
                 <div 
-                  key={order._id} 
+                  key={rowKey}
                   id={`order-${order._id}`}
                   className={`bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-lg shadow-lg border border-white/20 dark:border-gray-700/20 p-4 hover:shadow-xl transition-all duration-300 ${
                     highlightedOrderId === order._id 
@@ -878,6 +937,19 @@ function OrdersPageContent() {
                         {order.customer?.contactName || 'N/A'}
                       </span>
                     </div>
+
+                    {(user?.isCompanyAdmin || user?.isSuperAdmin) && (
+                      <div className="flex items-center gap-2">
+                        <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.176 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81H7.03a1 1 0 00.95-.69l1.07-3.292z" />
+                        </svg>
+                        <span className="text-sm text-gray-600 dark:text-gray-400 truncate">
+                          Manager: {rowManagerLabel || (order.customer?.assignedManagerNames?.length
+                            ? order.customer.assignedManagerNames.join(", ")
+                            : "Not assigned")}
+                        </span>
+                      </div>
+                    )}
                     
                     <div className="flex items-center gap-2">
                       <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">

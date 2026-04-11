@@ -7,7 +7,13 @@ export async function GET(request: NextRequest) {
     const authHeader = request.headers.get("authorization");
     const token = authHeader?.replace("Bearer ", "");
 
-    const response = await fetch(`${API_BASE_URL}/api/managers/orders`, {
+    // Forward query string (limit, page, status, category) — backend defaults limit to 10 if omitted,
+    // which caused managers to only ever see 10 orders despite the UI requesting limit=1000.
+    const { searchParams } = new URL(request.url);
+    const queryString = searchParams.toString();
+    const backendUrl = `${API_BASE_URL}/api/managers/orders${queryString ? `?${queryString}` : ""}`;
+
+    const response = await fetch(backendUrl, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
