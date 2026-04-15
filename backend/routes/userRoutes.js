@@ -101,11 +101,49 @@ router.get("/", auth, async (req, res) => {
   try {
     const raw = req.query.company_id || req.user.company_id;
     const companyId = (typeof raw === "string" ? raw.trim() : "") || req.user.company_id;
+    const compact = String(req.query.compact || "0") === "1";
+    const limitRaw = Number(req.query.limit || 0);
+    const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, 5000) : 0;
     if (!companyId) {
       return res.status(400).json({ message: "company_id required" });
     }
-    const regex = new RegExp(`^${companyId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i");
-    const users = await User.find({ company_id: regex }).select("-password");
+
+    const compactSelect = [
+      "user_id",
+      "firstName",
+      "lastName",
+      "email",
+      "phone",
+      "role",
+      "department",
+      "company_id",
+      "isActive",
+      "isSuperAdmin",
+      "isCompanyAdmin",
+      "isCustomer",
+      "isManager",
+      "customerProfile.customer_id",
+      "customerProfile.companyName",
+      "customerProfile.customerType",
+      "managerProfile.manager_id",
+      "managerProfile.assignedCategories",
+      "createdAt",
+      "updatedAt",
+    ].join(" ");
+    const selectClause = compact ? compactSelect : "-password";
+
+    // Fast indexed path first (exact company_id), fallback to case-insensitive regex only if needed.
+    let query = User.find({ company_id: companyId }).select(selectClause).sort({ _id: -1 }).lean();
+    if (limit > 0) query = query.limit(limit);
+    let users = await query;
+
+    if (users.length === 0) {
+      const regex = new RegExp(`^${companyId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i");
+      let fallbackQuery = User.find({ company_id: regex }).select(selectClause).sort({ _id: -1 }).lean();
+      if (limit > 0) fallbackQuery = fallbackQuery.limit(limit);
+      users = await fallbackQuery;
+    }
+
     res.json(users);
   } catch (e) {
     res.status(400).json({ message: e.message });

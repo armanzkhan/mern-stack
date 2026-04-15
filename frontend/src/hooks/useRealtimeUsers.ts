@@ -82,14 +82,13 @@ export const useRealtimeUsers = (): UseRealtimeUsersReturn => {
   // Fetch users from API
   const fetchUsers = useCallback(async () => {
     try {
-      const response = await fetch('/api/users', {
+      const response = await fetch('/api/users?compact=1', {
         headers: getAuthHeaders(),
       });
 
       if (response.ok) {
         const data = await response.json();
         setUsers(Array.isArray(data) ? data : []);
-        console.log('🔄 Users refreshed from API:', Array.isArray(data) ? data.length : 0);
       } else {
         const errBody = await response.text();
         console.error('❌ Users API error:', response.status, errBody);
@@ -107,15 +106,9 @@ export const useRealtimeUsers = (): UseRealtimeUsersReturn => {
 
   // Handle real-time notifications for user updates
   const handleRealtimeNotification = useCallback((notification: RealtimeNotification) => {
-    console.log('🔔 User real-time notification received:', notification);
-    
     // Check if this is a user-related notification
     if (notification.data?.entityType === 'user') {
-      const action = notification.data.action;
-      const userId = notification.data.entityId;
-      
-      console.log(`🔄 User ${action} notification:`, { action, userId });
-      
+      const action = notification.data?.action || 'updated';
       // Refresh users list when user data changes
       fetchUsers();
       
@@ -135,10 +128,6 @@ export const useRealtimeUsers = (): UseRealtimeUsersReturn => {
     
     // Also handle customer-related notifications since customers are also users
     if (notification.data?.entityType === 'customer') {
-      const action = notification.data.action;
-      
-      console.log(`🔄 Customer ${action} notification affecting users:`, action);
-      
       // Refresh users list when customer data changes (since customers are users)
       fetchUsers();
     }
@@ -147,7 +136,6 @@ export const useRealtimeUsers = (): UseRealtimeUsersReturn => {
   // Add user to local state
   const addUser = useCallback((user: User) => {
     setUsers(prev => [user, ...prev]);
-    console.log('➕ User added to local state:', user.email);
   }, []);
 
   // Update user in local state
@@ -157,13 +145,11 @@ export const useRealtimeUsers = (): UseRealtimeUsersReturn => {
         user._id === updatedUser._id ? updatedUser : user
       )
     );
-    console.log('✏️ User updated in local state:', updatedUser.email);
   }, []);
 
   // Remove user from local state
   const removeUser = useCallback((userId: string) => {
     setUsers(prev => prev.filter(user => user._id !== userId));
-    console.log('🗑️ User removed from local state:', userId);
   }, []);
 
   // Initialize client-side state
@@ -175,8 +161,6 @@ export const useRealtimeUsers = (): UseRealtimeUsersReturn => {
   useEffect(() => {
     if (!isClient) return;
     
-    console.log('🔌 Setting up real-time user updates...');
-    
     // Add notification listener for user updates
     realtimeNotificationService.addListener(handleRealtimeNotification);
     
@@ -186,14 +170,13 @@ export const useRealtimeUsers = (): UseRealtimeUsersReturn => {
     // Check connection status periodically
     const statusInterval = setInterval(() => {
       const status = realtimeNotificationService.getConnectionStatus();
-      setIsConnected(status.isConnected);
-    }, 1000);
+      setIsConnected(prev => (prev === status.isConnected ? prev : status.isConnected));
+    }, 10000);
 
     // Initial fetch
     fetchUsers();
 
     return () => {
-      console.log('🔌 Cleaning up real-time user updates...');
       realtimeNotificationService.removeListener(handleRealtimeNotification);
       clearInterval(statusInterval);
     };

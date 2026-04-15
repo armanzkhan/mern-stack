@@ -172,6 +172,31 @@ export default function CreateOrderPage() {
   const router = useRouter();
   const { user, loading: userLoading } = useUser();
   const customerBootstrapAttemptedRef = useRef(false);
+  const roleNames = (user?.roles || [])
+    .map((r: any) => {
+      if (typeof r === "string") return r.toLowerCase();
+      if (r && typeof r === "object") return String(r.name || r.role || "").toLowerCase();
+      return "";
+    })
+    .filter(Boolean);
+  const userRoleName = String(user?.role || "").toLowerCase();
+  const isSuperAdminUser =
+    !!user?.isSuperAdmin ||
+    userRoleName === "super admin" ||
+    userRoleName === "super_admin" ||
+    userRoleName === "superadmin" ||
+    roleNames.includes("super admin") ||
+    roleNames.includes("super_admin") ||
+    roleNames.includes("superadmin");
+  const isCompanyAdminUser =
+    !isSuperAdminUser &&
+    (Boolean(user?.isCompanyAdmin) ||
+      userRoleName === "company admin" ||
+      userRoleName === "company_admin" ||
+      userRoleName === "companyadmin" ||
+      roleNames.includes("company admin") ||
+      roleNames.includes("company_admin") ||
+      roleNames.includes("companyadmin"));
   const isCustomerSession =
     !!(
       user?.isCustomer ||
@@ -460,7 +485,11 @@ export default function CreateOrderPage() {
         setCategories([]);
       });
 
-      const shouldFetchManagerProfile = !isCustomerUser && !!user?.isManager;
+      const shouldFetchManagerProfile =
+        !isCustomerUser &&
+        !!user?.isManager &&
+        !isCompanyAdminUser &&
+        !isSuperAdminUser;
       const managerPromise = shouldFetchManagerProfile
         ? fetch('/api/managers/profile', {
             headers: getAuthHeaders(),
@@ -1479,6 +1508,7 @@ export default function CreateOrderPage() {
                             <div
                               key={customer._id}
                               role="option"
+                              aria-selected={formData.customer === customer._id}
                               onMouseDown={(e) => e.preventDefault()}
                               onClick={() => {
                                 setFormData((prev) => ({ ...prev, customer: customer._id }));

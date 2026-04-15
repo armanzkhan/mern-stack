@@ -5,12 +5,12 @@ const API_BASE_URL = getBackendUrlServer();
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { companyId: string } }
+  { params }: { params: Promise<{ companyId: string }> }
 ) {
   try {
     const authHeader = request.headers.get('authorization');
     const token = authHeader?.replace('Bearer ', '');
-    const companyId = params.companyId;
+    const { companyId } = await params;
 
     if (!companyId) {
       return NextResponse.json({ error: 'companyId is required' }, { status: 400 });

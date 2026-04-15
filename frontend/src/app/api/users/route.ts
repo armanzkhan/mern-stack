@@ -13,6 +13,8 @@ export async function GET(request: NextRequest) {
     const role = searchParams.get("role");
     const department = searchParams.get("department");
     const isActive = searchParams.get("isActive");
+    const compact = searchParams.get("compact");
+    const limit = searchParams.get("limit");
 
     // Build query string
     const queryParams = new URLSearchParams();
@@ -20,6 +22,8 @@ export async function GET(request: NextRequest) {
     if (role) queryParams.append("role", role);
     if (department) queryParams.append("department", department);
     if (isActive !== null) queryParams.append("isActive", isActive);
+    if (compact) queryParams.append("compact", compact);
+    if (limit) queryParams.append("limit", limit);
 
     const queryString = queryParams.toString();
     // Use /api/users/all for getting all users (no auth required) or /api/users for filtered (auth required)

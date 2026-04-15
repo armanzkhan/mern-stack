@@ -3,7 +3,7 @@
 import { ProtectedRoute } from "@/components/Auth/ProtectedRoute";
 import { PermissionGate } from "@/components/Auth/PermissionGate";
 import Breadcrumb from "@/components/Breadcrumbs/Breadcrumb";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useRealtimeUsers } from "@/hooks/useRealtimeUsers";
@@ -72,6 +72,7 @@ export default function UsersPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterRole, setFilterRole] = useState("");
+  const lastRefreshAtRef = useRef(0);
 
   // Fetch users (now using real-time hook)
   const fetchUsers = async () => {
@@ -86,13 +87,17 @@ export default function UsersPage() {
   };
 
   useEffect(() => {
-    fetchUsers();
+    setLoading(false);
   }, []);
 
   // Refresh data when page becomes visible
   useEffect(() => {
+    const MIN_REFRESH_INTERVAL_MS = 30000;
     const handleVisibilityChange = () => {
       if (!document.hidden) {
+        const now = Date.now();
+        if (now - lastRefreshAtRef.current < MIN_REFRESH_INTERVAL_MS) return;
+        lastRefreshAtRef.current = now;
         fetchUsers();
       }
     };
@@ -101,12 +106,12 @@ export default function UsersPage() {
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, []);
 
-  // Auto-refresh every 30 seconds to ensure data is up-to-date
+  // Auto-refresh every 60 seconds to keep data fresh with less churn.
   useEffect(() => {
     const interval = setInterval(() => {
-      console.log('🔄 Auto-refreshing users data...');
+      lastRefreshAtRef.current = Date.now();
       fetchUsers();
-    }, 30000); // Refresh every 30 seconds
+    }, 60000);
 
     return () => clearInterval(interval);
   }, []);
