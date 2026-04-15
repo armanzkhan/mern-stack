@@ -310,19 +310,23 @@ class NotificationController {
       if (targetType) query.targetType = targetType;
 
       const Notification = require('../models/Notification');
-      const notifications = await Notification.find(query)
-        .sort({ createdAt: -1 })
-        .limit(parseInt(limit))
-        .skip(parseInt(offset));
-
-      const total = await Notification.countDocuments(query);
+      const parsedLimit = parseInt(limit);
+      const parsedOffset = parseInt(offset);
+      const [notifications, total] = await Promise.all([
+        Notification.find(query)
+          .sort({ createdAt: -1 })
+          .limit(parsedLimit)
+          .skip(parsedOffset)
+          .lean(),
+        Notification.countDocuments(query),
+      ]);
 
       res.json({
         success: true,
         data: notifications,
         pagination: {
-          limit: parseInt(limit),
-          offset: parseInt(offset),
+          limit: parsedLimit,
+          offset: parsedOffset,
           total
         }
       });

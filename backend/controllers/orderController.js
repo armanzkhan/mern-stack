@@ -4,6 +4,7 @@ const Product = require("../models/Product");
 const CategoryApproval = require("../models/CategoryApproval");
 const User = require("../models/User");
 const Manager = require("../models/Manager");
+const notificationService = require("../services/notificationService");
 const notificationTriggerService = require("../services/notificationTriggerService");
 const categoryNotificationService = require("../services/categoryNotificationService");
 const realtimeService = require("../services/realtimeService");
@@ -35,19 +36,50 @@ const isLogisticManagerUser = (req) => {
     tokenRoles.includes("logistic manager") || tokenRoles.includes("logistic_manager");
 };
 
+/** Token + DB (JWT may omit role strings on older tokens). */
+const isLogisticManagerRequest = async (req, companyId) => {
+  if (!req.user?.user_id) return false;
+  if (isLogisticManagerUser(req)) return true;
+  const u = await User.findOne({
+    user_id: req.user.user_id,
+    company_id: companyId,
+  }).select("role roles isCompanyAdmin");
+  if (!u || u.isCompanyAdmin) return false;
+  const r = normalizeRoleName(u.role);
+  const rs = Array.isArray(u.roles) ? u.roles.map(normalizeRoleName) : [];
+  return (
+    r === "logistic manager" ||
+    r === "logistic_manager" ||
+    rs.includes("logistic manager") ||
+    rs.includes("logistic_manager")
+  );
+};
+
 const isCompanyAdminUser = (req) => {
   const tokenRole = normalizeRoleName(req.user?.role);
   const tokenRoles = Array.isArray(req.user?.roles) ? req.user.roles.map(normalizeRoleName) : [];
   return req.user?.isCompanyAdmin === true ||
     tokenRole === "company admin" || tokenRole === "company_admin" ||
-    tokenRoles.includes("company admin") || tokenRoles.includes("company_admin");
+    tokenRole === "companyadmin" ||
+    tokenRoles.includes("company admin") || tokenRoles.includes("company_admin") ||
+    tokenRoles.includes("companyadmin");
 };
 
-const getAllowedStatusesForUser = (req) => {
+const getAllowedStatusesForUserAsync = async (req, companyId) => {
   if (req.user?.isSuperAdmin || isCompanyAdminUser(req)) return COMPANY_ADMIN_STATUSES;
-  if (req.user?.isManager || isLogisticManagerUser(req)) {
-    // Backend accepts both manager and logistics transitions; UI enforces per-role options.
-    return [...LOGISTICS_STATUSES, ...MANAGER_STATUSES];
+  if (await isLogisticManagerRequest(req, companyId)) {
+    return LOGISTICS_STATUSES;
+  }
+  let isMgr = req.user?.isManager === true;
+  if (!isMgr && req.user?.user_id) {
+    const fullUser = await User.findOne({
+      user_id: req.user.user_id,
+      company_id: companyId,
+    }).select("isManager");
+    if (fullUser?.isManager) isMgr = true;
+  }
+  if (isMgr) {
+    return MANAGER_STATUSES;
   }
   return [...LOGISTICS_STATUSES, ...MANAGER_STATUSES];
 };
@@ -55,7 +87,7 @@ const getAllowedStatusesForUser = (req) => {
 // Create order
 exports.createOrder = async (req, res) => {
   try {
-    const { customer, items, notes } = req.body;
+    const { customer, items, notes, attachment } = req.body;
     const companyId = req.headers['x-company-id'] || req.user?.company_id || "RESSICHEM";
 
     // ✅ Validate customer
@@ -68,16 +100,26 @@ exports.createOrder = async (req, res) => {
     const orderItems = [];
     const categories = new Set();
 
+    // Batch-fetch products to avoid N database queries during order creation.
+    const uniqueProductIds = [...new Set((items || []).map((item) => String(item.product)))];
+    const products = await Product.find({
+      _id: { $in: uniqueProductIds },
+      company_id: companyId,
+    })
+      .select("_id category")
+      .lean();
+    const productById = new Map(products.map((product) => [String(product._id), product]));
+
     // ✅ Validate products and collect categories
     for (const item of items) {
-      const product = await Product.findOne({ _id: item.product, company_id: companyId });
+      const product = productById.get(String(item.product));
       if (!product) {
         return res.status(404).json({ message: `Product not found: ${item.product}` });
       }
-      
+
       const total = item.quantity * item.unitPrice;
       subtotal += total;
-      
+
       // Collect categories
       if (product.category?.mainCategory) {
         categories.add(product.category.mainCategory);
@@ -98,6 +140,40 @@ exports.createOrder = async (req, res) => {
     // Generate unique order number
     const orderNumber = `ORD-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
+    let normalizedAttachment = undefined;
+    if (attachment) {
+      const normalizedFileType = String(attachment?.fileType || "").toLowerCase();
+      const isAllowedType =
+        normalizedFileType.startsWith("image/") || normalizedFileType === "application/pdf";
+      const maxSizeBytes = 10 * 1024 * 1024; // 10MB
+      const fileSize = Number(attachment?.fileSize || 0);
+      const dataUrl = String(attachment?.dataUrl || "");
+
+      if (!isAllowedType) {
+        return res.status(400).json({
+          message: "Invalid attachment type. Only images and PDFs are allowed.",
+        });
+      }
+      if (!fileSize || fileSize > maxSizeBytes) {
+        return res.status(400).json({
+          message: "Attachment too large. Maximum allowed size is 10MB.",
+        });
+      }
+      if (!dataUrl.startsWith("data:")) {
+        return res.status(400).json({
+          message: "Invalid attachment format.",
+        });
+      }
+
+      normalizedAttachment = {
+        fileName: attachment.fileName || "attachment",
+        fileType: attachment.fileType,
+        fileSize,
+        dataUrl,
+        uploadedAt: attachment.uploadedAt ? new Date(attachment.uploadedAt) : new Date(),
+      };
+    }
+
     const order = new Order({
       orderNumber,
       customer,
@@ -106,6 +182,7 @@ exports.createOrder = async (req, res) => {
       tax,
       total,
       notes,
+      attachment: normalizedAttachment,
       createdBy: req.user ? req.user._id : null,
       company_id: companyId,
       categories: Array.from(categories),
@@ -363,40 +440,51 @@ exports.notifyApprovers = async (order, companyId) => {
 // Get all orders
 exports.getOrders = async (req, res) => {
   try {
-    const companyId = req.headers['x-company-id'] || req.user?.company_id || "RESSICHEM";
+    const requestedCompanyId = req.query?.company_id;
+    let companyId;
+    if (requestedCompanyId && String(requestedCompanyId).trim()) {
+      companyId = String(requestedCompanyId).trim();
+    } else if (req.user?.user_id) {
+      const dbUser = await User.findOne({ user_id: req.user.user_id }).select("company_id").lean();
+      companyId = String(dbUser?.company_id || req.user?.company_id || "RESSICHEM").trim();
+    } else if (req.user?._id) {
+      const dbUser = await User.findById(req.user._id).select("company_id").lean();
+      companyId = String(dbUser?.company_id || req.user?.company_id || "RESSICHEM").trim();
+    } else {
+      companyId = String(req.headers['x-company-id'] || req.user?.company_id || "RESSICHEM").trim();
+    }
+    const companyIdEscaped = companyId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const companyFilter = new RegExp(`^${companyIdEscaped}$`, "i");
+    const requestedStatus = normalizeRoleName(req.query?.status || "");
     
-    const canViewAllCompanyOrders = req.user?.isSuperAdmin || isCompanyAdminUser(req);
+    let canViewAllCompanyOrders = req.user?.isSuperAdmin || isCompanyAdminUser(req);
 
     // Check if user is a customer - if so, filter by their orders only
-    let query = { company_id: companyId };
+    let query = { company_id: companyFilter };
     let fullUser = null; // Declare outside to use later
     
     if (req.user && req.user.isCustomer) {
       // For customer users, find their customer record and filter orders
       const Customer = require('../models/Customer');
-      const currentUser = await User.findById(req.user._id).select('email');
-      
-      console.log(`🔍 Customer user detected: ${req.user.email}, User ID: ${req.user._id}`);
-      console.log(`🔍 Current user from DB:`, currentUser);
-      
-      if (currentUser) {
-        const customer = await Customer.findOne({ 
-          email: currentUser.email,
-          company_id: companyId 
-        });
-        
-        console.log(`🔍 Found customer record:`, customer ? { id: customer._id, email: customer.email, companyName: customer.companyName } : 'Not found');
-        
-        if (customer) {
-          query.customer = customer._id;
-          console.log(`🔍 Customer ${req.user.email} - filtering orders for customer ID: ${customer._id}`);
-        } else {
-          console.log(`⚠️ Customer user ${req.user.email} not found in customer records`);
-          return res.json([]); // Return empty array if customer not found
-        }
-      } else {
-        console.log(`⚠️ Current user not found in database for ID: ${req.user._id}`);
+      let currentUserEmail = req.user?.email;
+      if (!currentUserEmail && req.user?._id) {
+        const currentUser = await User.findById(req.user._id).select('email').lean();
+        currentUserEmail = currentUser?.email;
+      }
+
+      if (!currentUserEmail) {
         return res.json([]);
+      }
+
+      const customer = await Customer.findOne({
+        email: currentUserEmail,
+        company_id: companyId
+      }).select('_id').lean();
+
+      if (customer) {
+        query.customer = customer._id;
+      } else {
+        return res.json([]); // Return empty array if customer not found
       }
     } else {
 
@@ -405,11 +493,45 @@ exports.getOrders = async (req, res) => {
       fullUser = await User.findOne({ 
         user_id: req.user?.user_id, 
         company_id: companyId 
-      }).select('isManager managerProfile _id');
+      }).select('isManager managerProfile _id role roles isCompanyAdmin isSuperAdmin');
+
+      // Some accounts store role as "companyadmin" (without space/underscore).
+      const dbRole = normalizeRoleName(fullUser?.role);
+      const dbRoles = Array.isArray(fullUser?.roles) ? fullUser.roles.map(normalizeRoleName) : [];
+      const isDbCompanyAdmin =
+        fullUser?.isCompanyAdmin === true ||
+        dbRole === "company admin" ||
+        dbRole === "company_admin" ||
+        dbRole === "companyadmin" ||
+        dbRoles.includes("company admin") ||
+        dbRoles.includes("company_admin") ||
+        dbRoles.includes("companyadmin");
+      if (isDbCompanyAdmin || fullUser?.isSuperAdmin) {
+        canViewAllCompanyOrders = true;
+      }
+
+      const fullUserRole = normalizeRoleName(fullUser?.role);
+      const fullUserRoles = Array.isArray(fullUser?.roles) ? fullUser.roles.map(normalizeRoleName) : [];
+      const isLogisticUser =
+        !canViewAllCompanyOrders &&
+        (isLogisticManagerUser(req) ||
+          fullUserRole === "logistic manager" ||
+          fullUserRole === "logistic_manager" ||
+          fullUserRoles.includes("logistic manager") ||
+          fullUserRoles.includes("logistic_manager"));
+
+      if (isLogisticUser) {
+        // Logistics board: only approved orders are actionable to move into hold/dispatch.
+        query = {
+          company_id: companyFilter,
+          status: "approved",
+        };
+        console.log(`🚚 Logistic manager ${req.user?.email}: returning approved orders only`);
+      }
       
       // Company admins / super admins should always see all company orders,
       // even if their DB user record also has isManager=true.
-      if (!canViewAllCompanyOrders && fullUser && fullUser.isManager) {
+      else if (!canViewAllCompanyOrders && fullUser && fullUser.isManager) {
         // For manager users, use OrderItemApproval as primary source (most reliable)
         console.log(`🔍 Manager user detected: ${req.user?.email}, user_id: ${req.user?.user_id}, User._id: ${fullUser._id}`);
         
@@ -448,22 +570,6 @@ exports.getOrders = async (req, res) => {
         console.log(`🔍 Manager email: ${req.user?.email}, user_id: ${req.user?.user_id}`);
         console.log(`🔍 Company ID: ${companyId}`);
         
-        // First, let's check if there are ANY approvals for this manager
-        const allApprovalsForManager = await OrderItemApproval.find({
-          assignedManager: fullUser._id,
-          company_id: companyId
-        });
-        console.log(`🔍 Total approvals found for manager: ${allApprovalsForManager.length}`);
-        if (allApprovalsForManager.length > 0) {
-          console.log(`   Sample approval:`, {
-            _id: allApprovalsForManager[0]._id,
-            orderId: allApprovalsForManager[0].orderId,
-            assignedManager: allApprovalsForManager[0].assignedManager,
-            category: allApprovalsForManager[0].category,
-            status: allApprovalsForManager[0].status
-          });
-        }
-        
         const approvalOrderIds = await OrderItemApproval.find({
           assignedManager: fullUser._id, // Use fullUser._id (User._id) not req.user._id
           company_id: companyId
@@ -478,7 +584,7 @@ exports.getOrders = async (req, res) => {
           // Use orders from approvals
           query = {
             _id: { $in: approvalOrderIds },
-            company_id: companyId
+            company_id: companyFilter
           };
           console.log(`📋 Query built:`, JSON.stringify(query, null, 2));
           console.log(`📋 Using ${approvalOrderIds.length} orders from item approvals`);
@@ -503,7 +609,8 @@ exports.getOrders = async (req, res) => {
           
           // Get all orders and filter by normalized category matching
           const allOrders = await Order.find({ company_id: companyId })
-            .select('_id categories');
+            .select('_id categories')
+            .lean();
           
           const matchingOrderIds = allOrders
             .filter(order => {
@@ -521,23 +628,30 @@ exports.getOrders = async (req, res) => {
           
           query = {
             _id: { $in: matchingOrderIds },
-            company_id: companyId
+            company_id: companyFilter
           };
           console.log(`✅ Found ${matchingOrderIds.length} orders via normalized category matching`);
         } else {
           console.log(`⚠️ Manager ${req.user?.email} has no assigned categories - returning empty result`);
-          query = { company_id: companyId, _id: null }; // Return no orders
+          query = { company_id: companyFilter, _id: null }; // Return no orders
         }
       } else if (canViewAllCompanyOrders) {
         console.log(`🔓 Admin-level access for ${req.user?.email}: returning all company orders`);
       }
+    }
+
+    // Optional explicit status filter for admin/staff/customer views.
+    // (Logistics query is forced to approved above.)
+    if (requestedStatus && requestedStatus !== "all" && query.status === undefined) {
+      query.status = requestedStatus;
     }
     
     let orders = await Order.find(query)
       .populate("customer", "companyName contactName email")
       .populate("items.product", "name price category")
       .populate("createdBy", "email firstName lastName")
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean();
 
     // For admin-level views, include assigned manager names/emails for each customer
     // so company admin / super admin can see who owns each customer's orders.
@@ -657,12 +771,12 @@ exports.getOrders = async (req, res) => {
         }
 
         orders = orders.map((order) => {
-          const plainOrder = order.toObject();
+          const plainOrder = order;
           const customerId = plainOrder.customer?._id?.toString();
           const customerRecord = customerById.get(customerId);
           const managerLabels = new Set();
           const orderApprovalManagerLabels =
-            approvalManagersByOrderId.get(order._id.toString()) || new Set();
+            approvalManagersByOrderId.get(plainOrder._id.toString()) || new Set();
 
           if (customerRecord?.assignedManager?.manager_id) {
             const managerId = customerRecord.assignedManager.manager_id.toString();
@@ -692,16 +806,11 @@ exports.getOrders = async (req, res) => {
     // But we can add a final verification if needed
     if (req.user && fullUser && fullUser.isManager) {
       console.log(`✅ Manager ${req.user?.email}: Returning ${orders.length} orders (already filtered by approvals/categories)`);
+    } else if (isLogisticManagerUser(req)) {
+      console.log(`✅ Logistic manager ${req.user?.email}: Returning ${orders.length} approved orders`);
     }
-    
+
     console.log(`📊 Found ${orders.length} orders for user ${req.user?.email || 'anonymous'}`);
-    console.log(`📊 Orders details:`, orders.map(order => ({
-      orderNumber: order.orderNumber,
-      customer: order.customer?.companyName,
-      status: order.status,
-      total: order.total,
-      itemCount: order.items?.length || 0
-    })));
     res.json(orders);
   } catch (err) {
     console.error("Error fetching orders:", err);
@@ -718,6 +827,19 @@ exports.getOrderById = async (req, res) => {
       .populate("items.product", "name price category");
     
     if (!order) return res.status(404).json({ message: "Order not found" });
+
+    const orderCompanyId = order.company_id || companyId;
+    if (
+      !(req.user?.isSuperAdmin || isCompanyAdminUser(req)) &&
+      (await isLogisticManagerRequest(req, orderCompanyId))
+    ) {
+      const st = String(order.status || "").toLowerCase();
+      if (st !== "approved") {
+        return res.status(403).json({
+          message: "Logistics can only view orders that are in approved status.",
+        });
+      }
+    }
     
     // Check if user is a manager and filter items by assigned categories
     let isManager = req.user?.isManager === true;
@@ -837,12 +959,29 @@ exports.getOrderById = async (req, res) => {
 exports.updateOrderStatus = async (req, res) => {
   try {
     const { status, comments, discountAmount } = req.body;
-    const allowedStatuses = getAllowedStatusesForUser(req);
+    const oldOrder = await Order.findById(req.params.id);
+    if (!oldOrder) return res.status(404).json({ message: "Order not found" });
+
+    const companyId = oldOrder.company_id || req.headers["x-company-id"] || req.user?.company_id || "RESSICHEM";
+    const allowedStatuses = await getAllowedStatusesForUserAsync(req, companyId);
     if (status && !allowedStatuses.includes(String(status).toLowerCase())) {
       return res.status(400).json({ message: `Invalid status. Allowed statuses are: ${allowedStatuses.join(", ")}.` });
     }
-    const oldOrder = await Order.findById(req.params.id);
-    if (!oldOrder) return res.status(404).json({ message: "Order not found" });
+
+    if (status && (await isLogisticManagerRequest(req, companyId))) {
+      const oldS = String(oldOrder.status || "").toLowerCase();
+      const newS = String(status).toLowerCase();
+      if (oldS !== "approved") {
+        return res.status(403).json({
+          message: "Logistics can only update orders that are in approved status.",
+        });
+      }
+      if (!LOGISTICS_STATUSES.includes(newS)) {
+        return res.status(400).json({
+          message: `Logistics can only set status to: ${LOGISTICS_STATUSES.join(", ")}.`,
+        });
+      }
+    }
 
     // Prepare update data
     const updateData = {};
@@ -883,7 +1022,7 @@ exports.updateOrderStatus = async (req, res) => {
       console.error("Realtime notification error:", realtimeError);
     }
 
-    // Send notification about order status change
+    // Fire notifications asynchronously so status API responds immediately.
     try {
       const updatedBy = req.user ? {
         _id: req.user._id,
@@ -892,10 +1031,13 @@ exports.updateOrderStatus = async (req, res) => {
         email: req.user.email,
         name: req.user.firstName && req.user.lastName ? `${req.user.firstName} ${req.user.lastName}` : req.user.email
       } : { _id: 'system', name: 'System', email: 'system@ressichem.com' };
-      await notificationTriggerService.triggerOrderStatusChanged(order, updatedBy, oldOrder.status, status);
+      Promise.resolve(
+        notificationTriggerService.triggerOrderStatusChanged(order, updatedBy, oldOrder.status, status)
+      ).catch((notificationError) => {
+        console.error("Failed to send order status change notification:", notificationError);
+      });
     } catch (notificationError) {
-      console.error("Failed to send order status change notification:", notificationError);
-      // Don't fail the order update if notification fails
+      console.error("Failed to queue order status change notification:", notificationError);
     }
 
     res.json(order);
@@ -907,7 +1049,7 @@ exports.updateOrderStatus = async (req, res) => {
 // Update order (general update)
 exports.updateOrder = async (req, res) => {
   try {
-    const { status, notes, subtotal, tax, total } = req.body;
+    const { status, notes, subtotal, tax, total, attachment } = req.body;
     const companyId = req.headers['x-company-id'] || req.user?.company_id || "RESSICHEM";
     
     const oldOrder = await Order.findOne({ _id: req.params.id, company_id: companyId });
@@ -917,7 +1059,7 @@ exports.updateOrder = async (req, res) => {
     const updateData = {};
     if (status !== undefined) {
       const normalizedStatus = String(status).toLowerCase();
-      const allowedStatuses = getAllowedStatusesForUser(req);
+      const allowedStatuses = await getAllowedStatusesForUserAsync(req, companyId);
       console.log("🔍 updateOrder status validation:", {
         incomingStatus: status,
         normalizedStatus,
@@ -930,12 +1072,61 @@ exports.updateOrder = async (req, res) => {
       if (!allowedStatuses.includes(normalizedStatus)) {
         return res.status(400).json({ message: `Invalid status. Allowed statuses are: ${allowedStatuses.join(", ")}.` });
       }
+      if (await isLogisticManagerRequest(req, companyId)) {
+        const oldS = String(oldOrder.status || "").toLowerCase();
+        if (oldS !== "approved") {
+          return res.status(403).json({
+            message: "Logistics can only update orders that are in approved status.",
+          });
+        }
+        if (!LOGISTICS_STATUSES.includes(normalizedStatus)) {
+          return res.status(400).json({
+            message: `Logistics can only set status to: ${LOGISTICS_STATUSES.join(", ")}.`,
+          });
+        }
+      }
       updateData.status = normalizedStatus;
     }
     if (notes !== undefined) updateData.notes = notes;
     if (subtotal !== undefined) updateData.subtotal = subtotal;
     if (tax !== undefined) updateData.tax = tax;
     if (total !== undefined) updateData.total = total;
+    if (attachment !== undefined) {
+      if (attachment === null) {
+        updateData.attachment = null;
+      } else {
+        const normalizedFileType = String(attachment?.fileType || "").toLowerCase();
+        const isAllowedType =
+          normalizedFileType.startsWith("image/") || normalizedFileType === "application/pdf";
+        const maxSizeBytes = 10 * 1024 * 1024; // 10MB
+        const fileSize = Number(attachment?.fileSize || 0);
+        const dataUrl = String(attachment?.dataUrl || "");
+
+        if (!isAllowedType) {
+          return res.status(400).json({
+            message: "Invalid attachment type. Only images and PDFs are allowed.",
+          });
+        }
+        if (!fileSize || fileSize > maxSizeBytes) {
+          return res.status(400).json({
+            message: "Attachment too large. Maximum allowed size is 10MB.",
+          });
+        }
+        if (!dataUrl.startsWith("data:")) {
+          return res.status(400).json({
+            message: "Invalid attachment format.",
+          });
+        }
+
+        updateData.attachment = {
+          fileName: attachment.fileName || "attachment",
+          fileType: attachment.fileType,
+          fileSize,
+          dataUrl,
+          uploadedAt: attachment.uploadedAt ? new Date(attachment.uploadedAt) : new Date(),
+        };
+      }
+    }
 
     const order = await Order.findByIdAndUpdate(
       req.params.id,
@@ -947,13 +1138,20 @@ exports.updateOrder = async (req, res) => {
     if (status && status !== oldOrder.status) {
       try {
         const updatedBy = req.user || { _id: 'system', name: 'System', email: 'system@ressichem.com' };
-        await notificationTriggerService.triggerOrderStatusChanged(order, updatedBy, oldOrder.status, status);
-        
-        // Send category-based notifications to managers
-        await categoryNotificationService.notifyStatusChange(order, oldOrder.status, status, updatedBy);
+        Promise.resolve(
+          notificationTriggerService.triggerOrderStatusChanged(order, updatedBy, oldOrder.status, status)
+        ).catch((notificationError) => {
+          console.error("Failed to send order status change notification:", notificationError);
+        });
+
+        // Send category-based notifications to managers in background.
+        Promise.resolve(
+          categoryNotificationService.notifyStatusChange(order, oldOrder.status, status, updatedBy)
+        ).catch((notificationError) => {
+          console.error("Failed to send category status change notification:", notificationError);
+        });
       } catch (notificationError) {
-        console.error("Failed to send order status change notification:", notificationError);
-        // Don't fail the order update if notification fails
+        console.error("Failed to queue order status change notification:", notificationError);
       }
     }
 

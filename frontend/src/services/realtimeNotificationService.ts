@@ -534,9 +534,6 @@ class RealtimeNotificationService {
         console.log('Unknown notification type:', message.type);
     }
 
-    if (notification) {
-      this.notifyListeners(notification);
-    }
   }
 
   private subscribeToUpdates() {
@@ -577,16 +574,6 @@ class RealtimeNotificationService {
     } else {
       console.error('❌ Max reconnection attempts reached');
     }
-  }
-
-  private notifyListeners(notification: RealtimeNotification) {
-    this.listeners.forEach(listener => {
-      try {
-        listener(notification);
-      } catch (error) {
-        console.error('Error in notification listener:', error);
-      }
-    });
   }
 
   // Public methods
@@ -633,18 +620,12 @@ class RealtimeNotificationService {
    */
   private async showPopupNotification(notification: RealtimeNotification) {
     try {
-      console.log('🔔 showPopupNotification called with:', notification);
-      console.log('🔔 Number of listeners:', this.listeners.length);
-      
       // First, notify all React listeners (this triggers the popup in the UI)
-      console.log('🔔 Notifying React listeners:', notification);
-      this.listeners.forEach((listener, index) => {
+      this.listeners.forEach((listener) => {
         try {
-          console.log(`🔔 Calling listener ${index}:`, listener);
           listener(notification);
-          console.log(`✅ Listener ${index} called successfully`);
         } catch (error) {
-          console.error(`❌ Error in listener ${index}:`, error);
+          console.error('Error in notification listener:', error);
         }
       });
 

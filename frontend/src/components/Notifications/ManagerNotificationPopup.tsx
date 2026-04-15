@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useUser } from '@/components/Auth/user-context';
+import { BellRing, CheckCircle2, Info, Package2, X } from 'lucide-react';
 
 interface ManagerNotificationPopupProps {
   notification: {
@@ -85,23 +86,11 @@ export default function ManagerNotificationPopup({
   const getNotificationIcon = () => {
     switch (notification.type) {
       case 'order':
-        return (
-          <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-          </svg>
-        );
+        return <Package2 className="h-5 w-5 text-sky-300" />;
       case 'status':
-        return (
-          <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-        );
+        return <CheckCircle2 className="h-5 w-5 text-emerald-300" />;
       default:
-        return (
-          <svg className="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-        );
+        return <Info className="h-5 w-5 text-amber-300" />;
     }
   };
 
@@ -109,40 +98,41 @@ export default function ManagerNotificationPopup({
   const getNotificationColor = () => {
     switch (notification.type) {
       case 'order':
-        return 'border-l-blue-500 bg-blue-50 dark:bg-blue-900/20';
+        return 'from-sky-600/30 to-blue-500/10';
       case 'status':
-        return 'border-l-green-500 bg-green-50 dark:bg-green-900/20';
+        return 'from-emerald-500/30 to-emerald-500/10';
       default:
-        return 'border-l-yellow-500 bg-yellow-50 dark:bg-yellow-900/20';
+        return 'from-amber-500/30 to-amber-500/10';
     }
   };
 
   if (!isVisible) return null;
 
   return (
-    <div className="fixed top-4 right-4 z-50 max-w-sm w-full">
+    <div className="fixed right-4 top-4 z-50 w-[min(92vw,390px)]">
       <div 
         className={`
-          ${getNotificationColor()}
-          border-l-4 border border-gray-200 dark:border-gray-700 
-          rounded-lg shadow-lg p-4 cursor-pointer
+          relative overflow-hidden rounded-2xl border border-white/20 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4 text-slate-100 shadow-2xl backdrop-blur-xl
           transform transition-all duration-300 ease-in-out
-          hover:shadow-xl hover:scale-105
+          hover:-translate-y-0.5 hover:shadow-[0_20px_45px_rgba(15,23,42,0.55)]
           ${isVisible ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0'}
         `}
         onClick={handleNotificationClick}
       >
+        <div className={`pointer-events-none absolute inset-0 bg-gradient-to-br ${getNotificationColor()}`} />
+
         {/* Header */}
-        <div className="flex items-start justify-between mb-2">
-          <div className="flex items-center space-x-3">
+        <div className="relative mb-2 flex items-start justify-between">
+          <div className="flex items-center gap-2">
+            <div className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/20 bg-white/10">
+              <BellRing className="h-4 w-4 text-slate-200" />
+            </div>
             {getNotificationIcon()}
             <div>
-              <h4 className="text-sm font-semibold text-gray-900 dark:text-white">
+              <h4 className="line-clamp-1 text-sm font-semibold text-white">
                 {notification.title}
               </h4>
-              <p className="text-xs text-gray-600 dark:text-gray-300">
-                Manager Notification
-              </p>
+              <p className="text-xs text-slate-300">Manager Notification</p>
             </div>
           </div>
           
@@ -152,58 +142,57 @@ export default function ManagerNotificationPopup({
               e.stopPropagation();
               handleClose();
             }}
-            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
+            className="rounded-full border border-white/20 bg-white/10 p-1 text-slate-300 transition-colors hover:text-white"
+            aria-label="Close notification"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
+            <X className="h-4 w-4" />
           </button>
         </div>
 
         {/* Message */}
-        <p className="text-sm text-gray-700 dark:text-gray-300 mb-3">
+        <p className="relative mb-3 line-clamp-2 text-sm text-slate-200/95">
           {notification.message}
         </p>
 
         {/* Order info if available */}
         {notification.data?.orderNumber && (
-          <div className="text-xs text-gray-600 dark:text-gray-400 mb-2">
+          <div className="relative mb-2 text-xs text-slate-300/90">
             Order: {notification.data.orderNumber}
           </div>
         )}
 
         {/* Categories info if available */}
         {notification.data?.categories && notification.data.categories.length > 0 && (
-          <div className="text-xs text-gray-600 dark:text-gray-400 mb-2">
+          <div className="relative mb-2 text-xs text-slate-300/90">
             Categories: {notification.data.categories.join(', ')}
           </div>
         )}
 
         {/* Manager categories info */}
         {user?.isManager && user?.managerProfile?.assignedCategories && (
-          <div className="text-xs text-blue-600 dark:text-blue-400 mb-2">
+          <div className="relative mb-2 text-xs text-sky-300">
             Your Categories: {user.managerProfile.assignedCategories.join(', ')}
           </div>
         )}
 
         {/* Footer with timer and action */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-            <span className="text-xs text-gray-500 dark:text-gray-400">
+        <div className="relative flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="h-2 w-2 rounded-full bg-sky-300 animate-pulse"></div>
+            <span className="text-xs text-slate-300/90">
               Auto-dismiss in {timeLeft}s
             </span>
           </div>
           
-          <div className="text-xs text-blue-600 dark:text-blue-400 font-medium">
+          <div className="text-xs font-medium text-sky-300">
             Click to view →
           </div>
         </div>
 
         {/* Progress bar */}
-        <div className="mt-2 w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1">
+        <div className="relative mt-2 h-1 w-full rounded-full bg-white/20">
           <div 
-            className="bg-blue-500 h-1 rounded-full transition-all duration-1000 ease-linear"
+            className="h-1 rounded-full bg-sky-300 transition-all duration-1000 ease-linear"
             style={{ width: `${(timeLeft / 60) * 100}%` }}
           ></div>
         </div>

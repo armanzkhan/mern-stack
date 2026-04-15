@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Bell, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import { useRealtimeNotifications } from '@/hooks/useRealtimeNotifications';
 import { useUser } from '@/components/Auth/user-context';
-import { getAuthHeaders } from '@/lib/auth';
 import ManagerNotificationPopup from './ManagerNotificationPopup';
 
 interface SimpleNotificationManagerProps {
@@ -23,65 +23,29 @@ export default function SimpleNotificationManager({ children }: SimpleNotificati
   const [showNotification, setShowNotification] = useState(false);
   const [currentNotification, setCurrentNotification] = useState<any>(null);
   const [isClient, setIsClient] = useState(false);
+  const lastShownKeyRef = useRef<string | null>(null);
   const { user, isCustomer } = useUser();
 
   useEffect(() => {
-    console.log('🔔 SimpleNotificationManager: notifications changed', {
-      count: notifications.length,
-      isConnected,
-      userType: user?.userType,
-      isManager: user?.isManager,
-      notifications: notifications.map(n => ({ title: n.title, type: n.type, timestamp: n.timestamp }))
-    });
-
     if (notifications.length > 0) {
       const latestNotification = notifications[0];
-      console.log('🔔 Showing notification:', latestNotification);
+      const latestKey = `${latestNotification.type}|${latestNotification.title}|${latestNotification.timestamp}`;
+      if (lastShownKeyRef.current === latestKey) {
+        return;
+      }
+      lastShownKeyRef.current = latestKey;
+
       setCurrentNotification(latestNotification);
       setShowNotification(true);
-
-      // Store notification in database
-      const storeNotification = async () => {
-        try {
-          console.log('💾 Storing notification in database...');
-          const response = await fetch('/api/store-notification', {
-            method: 'POST',
-            headers: getAuthHeaders(),
-            body: JSON.stringify(latestNotification),
-          });
-            
-          if (response.ok) {
-            console.log('✅ Notification stored in database');
-          } else {
-            console.error('❌ Failed to store notification in database');
-          }
-        } catch (error) {
-          console.error('❌ Error storing notification in database:', error);
-        }
-      };
-
-      storeNotification();
-
       // Auto-hide after 60 seconds for managers, 5 seconds for others
       const autoHideDelay = user?.isManager ? 60000 : 5000;
       const timer = setTimeout(() => {
-        console.log('🔔 Auto-hiding notification');
         setShowNotification(false);
       }, autoHideDelay);
 
       return () => clearTimeout(timer);
     }
-  }, [notifications, isConnected]);
-
-  // Add debugging for connection status
-  useEffect(() => {
-    if (!isClient) return;
-    
-    console.log('🔔 SimpleNotificationManager: connection status changed', {
-      isConnected,
-      timestamp: new Date().toISOString()
-    });
-  }, [isConnected, isClient]);
+  }, [notifications, user?.isManager]);
 
   // Ensure we're on the client side to prevent hydration issues
   useEffect(() => {
@@ -121,9 +85,9 @@ export default function SimpleNotificationManager({ children }: SimpleNotificati
             />
           ) : (
             /* Default notification for non-managers */
-            <div className="fixed top-4 right-4 z-[9999] max-w-sm">
+            <div className="fixed right-4 top-4 z-[9999] w-[min(92vw,380px)]">
               <div 
-                className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg p-4 cursor-pointer hover:shadow-xl transition-shadow"
+                className="group cursor-pointer overflow-hidden rounded-2xl border border-white/25 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4 text-slate-100 shadow-2xl backdrop-blur-xl transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_20px_45px_rgba(15,23,42,0.55)] dark:border-slate-700/60"
                 onClick={() => {
                   // For customers, redirect to customer notifications page
                   if (user && isCustomer()) {
@@ -140,21 +104,25 @@ export default function SimpleNotificationManager({ children }: SimpleNotificati
                   }
                 }}
               >
-                <div className="flex items-start justify-between">
+                <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(59,130,246,0.35),transparent_45%)]" />
+                <div className="relative flex items-start justify-between gap-3">
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-2">
-                      <div className={`w-2 h-2 rounded-full ${
-                        isConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'
-                      }`} />
-                      <h4 className="text-sm font-semibold text-gray-900 dark:text-white">
+                      <div className={`h-2 w-2 rounded-full ${isConnected ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
+                      <Bell className="h-4 w-4 text-sky-300" />
+                      <h4 className="line-clamp-1 text-sm font-semibold text-white">
                         {currentNotification.title}
                       </h4>
+                      <span className="rounded-full border border-white/20 bg-white/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-200">
+                        New
+                      </span>
                     </div>
-                    <p className="text-sm text-gray-600 dark:text-gray-300 mb-2">
+                    <p className="mb-2 line-clamp-2 text-sm text-slate-200/90">
                       {currentNotification.message}
                     </p>
-                    <div className="text-xs text-gray-500 dark:text-gray-400">
+                    <div className="flex items-center justify-between gap-3 text-xs text-slate-300/80">
                       {isClient ? new Date(currentNotification.timestamp).toLocaleTimeString() : 'Loading...'}
+                      <span className="font-medium text-sky-300 group-hover:text-sky-200">Open</span>
                     </div>
                   </div>
                   <button
@@ -162,11 +130,10 @@ export default function SimpleNotificationManager({ children }: SimpleNotificati
                       e.stopPropagation();
                       handleNotificationClose();
                     }}
-                    className="ml-2 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
+                    className="ml-1 rounded-full border border-white/20 bg-white/10 p-1 text-slate-300 transition-colors hover:text-white"
+                    aria-label="Close notification"
                   >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
+                    <X className="h-4 w-4" />
                   </button>
                 </div>
               </div>

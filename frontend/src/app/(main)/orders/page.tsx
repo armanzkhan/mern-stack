@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic';
 import { ProtectedRoute } from "@/components/Auth/ProtectedRoute";
 import { PermissionGate } from "@/components/Auth/PermissionGate";
 import Breadcrumb from "@/components/Breadcrumbs/Breadcrumb";
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useUser } from "@/components/Auth/user-context";
 import { getAuthHeaders, handleAuthError } from "@/lib/auth";
@@ -32,6 +32,13 @@ interface Order {
   updatedAt: string;
   items: OrderItem[];
   notes?: string;
+  attachment?: {
+    fileName?: string;
+    fileType?: string;
+    fileSize?: number;
+    dataUrl?: string;
+    uploadedAt?: string;
+  } | null;
   approvalStatus?: string;
   categories?: string[];
   orderApprovalManagerNames?: string[];
@@ -59,6 +66,8 @@ interface OrderItem {
 function OrdersPageContent() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [initialFetchStarted, setInitialFetchStarted] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
@@ -73,6 +82,7 @@ function OrdersPageContent() {
   const [discountOrder, setDiscountOrder] = useState<Order | null>(null);
   const [discountValue, setDiscountValue] = useState("");
   const [discountComments, setDiscountComments] = useState("");
+  const [editAttachmentFile, setEditAttachmentFile] = useState<File | null>(null);
   
   // Highlight functionality
   const [highlightedOrderId, setHighlightedOrderId] = useState<string | null>(null);
@@ -83,11 +93,41 @@ function OrdersPageContent() {
   const [invoiceLoading, setInvoiceLoading] = useState(false);
   const [orderInvoices, setOrderInvoices] = useState<{[key: string]: any[]}>({});
   const [expandByManager, setExpandByManager] = useState(false);
+  const lastAutoRefreshAtRef = useRef(0);
+  const isFetchingOrdersRef = useRef(false);
+  const fetchedInvoiceOrderNumbersRef = useRef<Set<string>>(new Set());
+  const [attachmentPreview, setAttachmentPreview] = useState<{
+    url: string;
+    type: string;
+    name: string;
+  } | null>(null);
   
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, loading: userLoading } = useUser();
-  const roleNames = (user?.roles || []).map((r: any) => String(r).toLowerCase());
+  const formatFileSize = (bytes?: number) => {
+    if (!bytes || bytes <= 0) return "0 KB";
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+  };
+
+  const getOrdersCacheKey = () => {
+    const uid = user?.user_id || user?._id || "anon";
+    const cid = user?.company_id || "no-company";
+    return `orders-cache:${cid}:${uid}`;
+  };
+
+  useEffect(() => {
+    router.prefetch('/orders/create');
+  }, [router]);
+  const roleNames = (user?.roles || [])
+    .map((r: any) => {
+      if (typeof r === "string") return r.toLowerCase();
+      if (r && typeof r === "object") return String(r.name || r.role || "").toLowerCase();
+      return "";
+    })
+    .filter(Boolean);
   const userRoleName = String(user?.role || "").toLowerCase();
   // Detect roles for dropdown behavior.
   // Some existing logistic-manager users might have been created with an unexpected role name
@@ -100,31 +140,66 @@ function OrdersPageContent() {
     userRoleName === "logistic manager" ||
     userRoleName === "logistic_manager";
 
-  const isCompanyAdminUser = !!user?.isCompanyAdmin && !user?.isSuperAdmin;
-  /** Full order status dropdown (same options as company admin + super admin). */
-  const isFullStatusDropdownUser = isCompanyAdminUser || !!user?.isSuperAdmin;
-  const isCategoryManager = !!user?.isManager && !user?.isCompanyAdmin && !user?.isSuperAdmin;
-  const isLogisticManagerFallback =
-    !user?.isManager && !user?.isCustomer && !isCompanyAdminUser && !user?.isSuperAdmin;
+  const isSuperAdminUser =
+    !!user?.isSuperAdmin ||
+    userRoleName === "super admin" ||
+    userRoleName === "super_admin" ||
+    userRoleName === "superadmin" ||
+    roleNames.includes("super admin") ||
+    roleNames.includes("super_admin") ||
+    roleNames.includes("superadmin");
 
-  const isLogisticManager = isLogisticManagerRoleDetected || isLogisticManagerFallback;
+  const isCompanyAdminByRole =
+    userRoleName === "company admin" ||
+    userRoleName === "company_admin" ||
+    userRoleName === "companyadmin" ||
+    roleNames.includes("company admin") ||
+    roleNames.includes("company_admin") ||
+    roleNames.includes("companyadmin");
+  const isCompanyAdminUser = (Boolean(user?.isCompanyAdmin) || isCompanyAdminByRole) && !isSuperAdminUser;
+  /** Full order status dropdown (same options as company admin + super admin). */
+  const isFullStatusDropdownUser = isCompanyAdminUser || isSuperAdminUser;
+  const isCategoryManager = !!user?.isManager && !isCompanyAdminUser && !isSuperAdminUser;
+  const departmentName = String((user as any)?.department || "").toLowerCase();
+  const isLogisticManagerFallback =
+    !user?.isManager &&
+    !user?.isCustomer &&
+    !isCompanyAdminUser &&
+    !isSuperAdminUser &&
+    (
+      userRoleName.includes("logistic") ||
+      roleNames.some((r) => r.includes("logistic")) ||
+      departmentName.includes("logistic")
+    );
+
+  const isLogisticManager =
+    !isCompanyAdminUser &&
+    !isSuperAdminUser &&
+    (isLogisticManagerRoleDetected || isLogisticManagerFallback);
 
   // Fetch invoices for orders
   const fetchInvoicesForOrders = async (orderNumbers: string[]) => {
     try {
       const invoices: {[key: string]: any[]} = {};
-      
-      for (const orderNumber of orderNumbers) {
-        const response = await fetch(`/api/invoices/order/${orderNumber}`, {
-          headers: getAuthHeaders(),
-        });
-        
-        if (response.ok) {
-          const data = await response.json();
-          invoices[orderNumber] = data.data || [];
-        }
-      }
-      
+
+      // Avoid N+1 overload for very large lists - fetch only the most recent visible slice.
+      const invoiceLookupWindow = orderNumbers
+        .slice(0, 20)
+        .filter((orderNumber) => !fetchedInvoiceOrderNumbersRef.current.has(orderNumber));
+      await Promise.all(
+        invoiceLookupWindow.map(async (orderNumber) => {
+          const response = await fetch(`/api/invoices/order/${orderNumber}`, {
+            headers: getAuthHeaders(),
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            invoices[orderNumber] = data.data || [];
+            fetchedInvoiceOrderNumbersRef.current.add(orderNumber);
+          }
+        })
+      );
+
       setOrderInvoices(invoices);
     } catch (error) {
       console.error('Error fetching invoices for orders:', error);
@@ -132,44 +207,59 @@ function OrdersPageContent() {
   };
 
   // Fetch orders
-  const fetchOrders = async () => {
+  const fetchOrders = async (opts?: { background?: boolean }) => {
+    const background = !!opts?.background;
+    if (background && isFetchingOrdersRef.current) {
+      return;
+    }
+
     try {
-      setLoading(true);
-      
-      console.log('🔍 Fetching orders...');
-      console.log('   User authenticated:', !!user);
-      console.log('   User loading:', userLoading);
-      console.log('   Is customer:', user?.isCustomer);
-      
+      isFetchingOrdersRef.current = true;
+      if (background) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
+
       // Choose endpoint based on user type
       let apiEndpoint: string;
 
       if (user?.isCustomer) {
         // Customers: fetch their own orders with a high limit
         apiEndpoint = '/api/customers/orders?limit=1000&page=1';
-      } else if (user?.isManager && !user?.isCompanyAdmin && !user?.isSuperAdmin) {
+      } else if (isLogisticManager) {
+        // Logistics: only approved orders are visible/actionable.
+        apiEndpoint = '/api/orders?status=approved';
+      } else if (user?.isManager && !isCompanyAdminUser && !isSuperAdminUser) {
         // Managers: fetch only orders for their assigned categories
         apiEndpoint = '/api/managers/orders?limit=1000&page=1';
       } else {
         // Admin / staff: company-wide orders
         apiEndpoint = '/api/orders';
       }
-      console.log('   Using API endpoint:', apiEndpoint);
-      
+
       const response = await fetch(apiEndpoint, {
         headers: getAuthHeaders(),
       });
-      
-      console.log('   Response status:', response.status);
-      console.log('   Response ok:', response.ok);
-      
+
       if (response.ok) {
         const data = await response.json();
         // Handle both array response and paginated response
         const ordersData = Array.isArray(data) ? data : (data.orders || data.data || []);
-        console.log('   Orders fetched:', ordersData.length);
-        console.log('   Sample orders:', ordersData.slice(0, 2).map((o: Order) => o.orderNumber));
         setOrders(ordersData);
+
+        // SWR-style cache for instant next navigation.
+        try {
+          sessionStorage.setItem(
+            getOrdersCacheKey(),
+            JSON.stringify({
+              ts: Date.now(),
+              orders: ordersData,
+            })
+          );
+        } catch {
+          // Ignore storage quota/unavailable issues.
+        }
         
         // Fetch invoices in the background so orders render immediately.
         // For large datasets, waiting on per-order invoice requests can keep the page spinner visible too long.
@@ -186,7 +276,12 @@ function OrdersPageContent() {
     } catch (error) {
       console.error('Error fetching orders:', error);
     } finally {
-      setLoading(false);
+      isFetchingOrdersRef.current = false;
+      if (background) {
+        setRefreshing(false);
+      } else {
+        setLoading(false);
+      }
     }
   };
 
@@ -202,9 +297,30 @@ function OrdersPageContent() {
       router.push("/auth/sign-in");
       return;
     }
-    
-    fetchOrders();
-  }, [user, userLoading, router]);
+
+    if (initialFetchStarted) return;
+
+    let warmStart = false;
+    try {
+      const raw = sessionStorage.getItem(getOrdersCacheKey());
+      if (raw) {
+        const parsed = JSON.parse(raw) as { ts?: number; orders?: Order[] };
+        const cachedOrders = Array.isArray(parsed?.orders) ? parsed.orders : [];
+        // Keep cache short-lived to reduce stale UI.
+        const isFresh = !!parsed?.ts && Date.now() - parsed.ts < 2 * 60 * 1000;
+        if (cachedOrders.length > 0 && isFresh) {
+          setOrders(cachedOrders);
+          setLoading(false);
+          warmStart = true;
+        }
+      }
+    } catch {
+      // Ignore cache parse errors.
+    }
+
+    setInitialFetchStarted(true);
+    void fetchOrders({ background: warmStart });
+  }, [user, userLoading, router, initialFetchStarted]);
 
   // Handle highlight parameter from URL
   useEffect(() => {
@@ -231,14 +347,22 @@ function OrdersPageContent() {
 
   // Refresh orders when component becomes visible (e.g., when navigating back)
   useEffect(() => {
+    const AUTO_REFRESH_MIN_INTERVAL_MS = 30000;
+    const maybeRefreshOrders = () => {
+      const now = Date.now();
+      if (now - lastAutoRefreshAtRef.current < AUTO_REFRESH_MIN_INTERVAL_MS) return;
+      lastAutoRefreshAtRef.current = now;
+      void fetchOrders({ background: true });
+    };
+
     const handleVisibilityChange = () => {
       if (!document.hidden) {
-        fetchOrders();
+        maybeRefreshOrders();
       }
     };
 
     const handleFocus = () => {
-      fetchOrders();
+      maybeRefreshOrders();
     };
 
     // Listen for page visibility changes and focus events
@@ -273,6 +397,7 @@ function OrdersPageContent() {
           if (!cat || typeof cat !== 'string') return '';
           return cat.toLowerCase().trim()
             .replace(/\s*&\s*/g, ' and ')
+            .replace(/\bspeciality\b/g, 'specialty')
             .replace(/\s+/g, ' ');
         };
         
@@ -315,7 +440,7 @@ function OrdersPageContent() {
     return matchesSearch && matchesStatus && matchesManagerCategories;
   });
 
-  const canUseManagerExpandedView = !!(user?.isCompanyAdmin || user?.isSuperAdmin);
+  const canUseManagerExpandedView = !!(isCompanyAdminUser || isSuperAdminUser);
   const displayedOrderRows: OrderRow[] =
     canUseManagerExpandedView && expandByManager
       ? filteredOrders.flatMap((order) => {
@@ -372,17 +497,108 @@ function OrdersPageContent() {
 
   // Handle edit order
   const handleEditOrder = (order: Order) => {
+    const getEditAllowedStatuses = () => {
+      if (isCategoryManager) return ["processing", "rejected"];
+      if (isLogisticManager) return ["dispatch", "hold"];
+      if (isFullStatusDropdownUser) {
+        return [
+          "pending",
+          "approved",
+          "rejected",
+          "confirmed",
+          "processing",
+          "allocated",
+          "dispatch",
+          "hold",
+          "dispatched",
+          "shipped",
+          "completed",
+          "cancelled",
+        ];
+      }
+      return ["processing", "rejected", "dispatch", "hold"];
+    };
+
+    const allowedStatuses = getEditAllowedStatuses();
+    const normalizedCurrentStatus = String(order.status || "").toLowerCase();
+    const safeStatus = allowedStatuses.includes(normalizedCurrentStatus)
+      ? normalizedCurrentStatus
+      : allowedStatuses[0];
+
     setSelectedOrder(order);
+    setEditAttachmentFile(null);
     setEditingOrder({
       _id: order._id,
       orderNumber: order.orderNumber,
-      status: order.status,
+      // Ensure the edit form never submits a status disallowed for current role.
+      status: safeStatus,
       notes: order.notes || '',
+      attachment: order.attachment || null,
       total: order.total,
       subtotal: order.subtotal,
       tax: order.tax
     });
     setShowEditModal(true);
+  };
+
+  const fileToDataUrl = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = () => reject(new Error("Failed to read selected file."));
+      reader.readAsDataURL(file);
+    });
+
+  const loadImageFromFile = (file: File): Promise<HTMLImageElement> =>
+    new Promise((resolve, reject) => {
+      const img = new Image();
+      const objectUrl = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(objectUrl);
+        resolve(img);
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+        reject(new Error("Failed to load image for compression."));
+      };
+      img.src = objectUrl;
+    });
+
+  const compressImageFile = async (file: File): Promise<File> => {
+    if (!String(file.type || "").toLowerCase().startsWith("image/")) return file;
+
+    const img = await loadImageFromFile(file);
+    const maxDimension = 1920;
+    const targetBytes = 1.5 * 1024 * 1024; // Prefer <= 1.5MB after compression.
+
+    const scale = Math.min(1, maxDimension / Math.max(img.width, img.height));
+    const width = Math.max(1, Math.round(img.width * scale));
+    const height = Math.max(1, Math.round(img.height * scale));
+
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return file;
+    ctx.drawImage(img, 0, 0, width, height);
+
+    let quality = 0.82;
+    let blob: Blob | null = await new Promise((resolve) =>
+      canvas.toBlob(resolve, "image/jpeg", quality)
+    );
+    while (blob && blob.size > targetBytes && quality > 0.45) {
+      quality -= 0.08;
+      blob = await new Promise((resolve) =>
+        canvas.toBlob(resolve, "image/jpeg", quality)
+      );
+    }
+    if (!blob) return file;
+
+    const baseName = file.name.replace(/\.[^.]+$/, "");
+    return new File([blob], `${baseName}.jpg`, {
+      type: "image/jpeg",
+      lastModified: Date.now(),
+    });
   };
 
   // Handle update order
@@ -394,6 +610,37 @@ function OrdersPageContent() {
     setMessage("");
 
     try {
+      const payload: Record<string, any> = { ...editingOrder };
+      if (editAttachmentFile) {
+        const maxAttachmentSizeBytes = 10 * 1024 * 1024; // 10MB
+        const originalType = String(editAttachmentFile.type || "").toLowerCase();
+        const processedAttachmentFile = originalType.startsWith("image/")
+          ? await compressImageFile(editAttachmentFile)
+          : editAttachmentFile;
+        const fileType = String(processedAttachmentFile.type || "").toLowerCase();
+        const isAllowedType = fileType.startsWith("image/") || fileType === "application/pdf";
+        if (!isAllowedType) {
+          setMessage("❌ Invalid file type. Please upload an image or PDF.");
+          setTimeout(() => setMessage(""), 4000);
+          setSubmitting(false);
+          return;
+        }
+        if (processedAttachmentFile.size > maxAttachmentSizeBytes) {
+          setMessage("❌ Attachment too large. Maximum allowed size is 10MB.");
+          setTimeout(() => setMessage(""), 4000);
+          setSubmitting(false);
+          return;
+        }
+        const dataUrl = await fileToDataUrl(processedAttachmentFile);
+        payload.attachment = {
+          fileName: processedAttachmentFile.name,
+          fileType: processedAttachmentFile.type || "application/octet-stream",
+          fileSize: processedAttachmentFile.size,
+          dataUrl,
+          uploadedAt: new Date().toISOString(),
+        };
+      }
+
       const token = localStorage.getItem("token");
       const response = await fetch(`/api/orders/${selectedOrder._id}`, {
         method: 'PUT',
@@ -401,7 +648,7 @@ function OrdersPageContent() {
           'Content-Type': 'application/json',
           ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify(editingOrder),
+        body: JSON.stringify(payload),
       });
 
       if (response.ok) {
@@ -409,11 +656,16 @@ function OrdersPageContent() {
         setShowEditModal(false);
         setSelectedOrder(null);
         setEditingOrder({});
+        setEditAttachmentFile(null);
         await fetchOrders();
         setTimeout(() => setMessage(""), 3000);
       } else {
         const errorData = await response.text();
-        setMessage(`❌ Failed to update order: ${errorData}`);
+        if (response.status === 413) {
+          setMessage("❌ Attachment is too large for request payload. Please upload a smaller file.");
+        } else {
+          setMessage(`❌ Failed to update order: ${errorData}`);
+        }
         setTimeout(() => setMessage(""), 5000);
       }
     } catch (error) {
@@ -435,8 +687,16 @@ function OrdersPageContent() {
       });
 
       if (response.ok) {
+        // Instant UI feedback: update local row first, then reconcile in background.
+        setOrders((prev) =>
+          prev.map((order) =>
+            order._id === orderId
+              ? { ...order, status: newStatus, updatedAt: new Date().toISOString() }
+              : order
+          )
+        );
         setMessage(`✅ Order status updated to ${newStatus}!`);
-        await fetchOrders();
+        void fetchOrders({ background: true });
         setTimeout(() => setMessage(""), 3000);
       } else {
         const errorData = await response.json().catch(() => ({}));
@@ -616,13 +876,13 @@ function OrdersPageContent() {
                     console.log('🔄 Manual refresh triggered');
                     fetchOrders();
                   }}
-                  disabled={loading}
+                  disabled={loading || refreshing}
                   className="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-center font-medium text-gray-700 hover:border-blue-900 hover:text-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-900/50 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:hover:border-blue-400 disabled:opacity-50 transition-all duration-300 hover:shadow-lg text-sm"
                 >
-                  <svg className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className={`mr-2 h-4 w-4 ${(loading || refreshing) ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                   </svg>
-                  Refresh Orders
+                  {refreshing ? 'Refreshing...' : 'Refresh Orders'}
                 </button>
                 {/* Create New Order - Only for non-customers */}
       <PermissionGate permission="orders.create">
@@ -819,8 +1079,14 @@ function OrdersPageContent() {
               Overlap: <span className="font-semibold">{overlapCount}</span>
             </div>
           )}
+
+          {refreshing && (
+            <div className="mb-3 text-xs text-blue-700 dark:text-blue-300">
+              Updating orders in background...
+            </div>
+          )}
           
-          {loading ? (
+          {loading && displayedOrderRows.length === 0 ? (
             <div className="flex items-center justify-center py-8">
               <div className="text-center">
                 <div className="inline-block h-8 w-8 animate-spin rounded-full border-2 border-solid border-blue-500 border-r-transparent"></div>
@@ -885,6 +1151,12 @@ function OrdersPageContent() {
                       }`}>
                         {order.status}
                       </span>
+
+                      {order.attachment?.dataUrl && (
+                        <span className="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+                          📎 Attachment
+                        </span>
+                      )}
                       
          {/* Invoice and Payment indicators for customers */}
          {user?.isCustomer && orderInvoices[order.orderNumber] && orderInvoices[order.orderNumber].length > 0 && (
@@ -938,7 +1210,7 @@ function OrdersPageContent() {
                       </span>
                     </div>
 
-                    {(user?.isCompanyAdmin || user?.isSuperAdmin) && (
+                    {(isCompanyAdminUser || isSuperAdminUser) && (
                       <div className="flex items-center gap-2">
                         <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.176 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81H7.03a1 1 0 00.95-.69l1.07-3.292z" />
@@ -1310,11 +1582,87 @@ function OrdersPageContent() {
                     {selectedOrder?.tax && selectedOrder.tax > 0 && (
                       <p className="text-sm text-gray-500 line-through"><strong>Tax (10%):</strong> PKR {selectedOrder.tax.toLocaleString()} (removed)</p>
                     )}
-                    {selectedOrder?.finalTotal && (
-                      <p className="text-sm text-green-600"><strong>Final Total (after discount):</strong> PKR {selectedOrder.finalTotal.toLocaleString()}</p>
-                    )}
                     <p className="text-sm"><strong>Date:</strong> {selectedOrder?.orderDate ? new Date(selectedOrder.orderDate).toLocaleDateString() : 'N/A'}</p>
                     {selectedOrder?.notes && <p className="text-sm"><strong>Notes:</strong> {selectedOrder.notes}</p>}
+                    {selectedOrder?.attachment?.dataUrl && (
+                      <div className="mt-3 rounded-lg border border-blue-200 bg-blue-50 p-3 dark:border-blue-900/40 dark:bg-blue-900/20">
+                        <p className="text-sm font-semibold text-blue-900 dark:text-blue-200">Attachment</p>
+                        <p className="mt-1 text-xs text-blue-800 dark:text-blue-300">
+                          {selectedOrder.attachment.fileName || "attachment"}{" "}
+                          ({formatFileSize(selectedOrder.attachment.fileSize)}){" "}
+                          {selectedOrder.attachment.uploadedAt
+                            ? `- uploaded ${new Date(selectedOrder.attachment.uploadedAt).toLocaleString()}`
+                            : ""}
+                        </p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setAttachmentPreview({
+                                url: selectedOrder.attachment?.dataUrl || "",
+                                type: selectedOrder.attachment?.fileType || "",
+                                name: selectedOrder.attachment?.fileName || "Attachment",
+                              })
+                            }
+                            className="inline-flex items-center rounded-lg bg-blue-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-800"
+                          >
+                            Preview
+                          </button>
+                          <a
+                            href={selectedOrder.attachment.dataUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center rounded-lg border border-blue-300 bg-white px-3 py-1.5 text-xs font-medium text-blue-900 hover:bg-blue-100 dark:border-blue-700 dark:bg-gray-800 dark:text-blue-200 dark:hover:bg-gray-700"
+                          >
+                            View
+                          </a>
+                          <a
+                            href={selectedOrder.attachment.dataUrl}
+                            download={selectedOrder.attachment.fileName || "order-attachment"}
+                            className="inline-flex items-center rounded-lg border border-blue-300 bg-white px-3 py-1.5 text-xs font-medium text-blue-900 hover:bg-blue-100 dark:border-blue-700 dark:bg-gray-800 dark:text-blue-200 dark:hover:bg-gray-700"
+                          >
+                            Download
+                          </a>
+                        </div>
+                        {selectedOrder.attachment.fileType?.startsWith("image/") && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setAttachmentPreview({
+                                url: selectedOrder.attachment?.dataUrl || "",
+                                type: selectedOrder.attachment?.fileType || "",
+                                name: selectedOrder.attachment?.fileName || "Attachment",
+                              })
+                            }
+                            className="group relative mt-3 block w-full overflow-hidden rounded-md border border-blue-200 bg-black/70 dark:border-blue-900/40"
+                          >
+                            <img
+                              src={selectedOrder.attachment.dataUrl}
+                              alt={selectedOrder.attachment.fileName || "Attachment preview"}
+                              className="max-h-72 w-full object-contain transition-transform duration-300 group-hover:scale-[1.02]"
+                            />
+                            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-3 py-2 text-left text-xs text-white">
+                              Click to preview full screen
+                            </div>
+                          </button>
+                        )}
+                        {selectedOrder.attachment.fileType === "application/pdf" && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setAttachmentPreview({
+                                url: selectedOrder.attachment?.dataUrl || "",
+                                type: selectedOrder.attachment?.fileType || "",
+                                name: selectedOrder.attachment?.fileName || "PDF attachment",
+                              })
+                            }
+                            className="mt-3 inline-flex items-center rounded-lg border border-blue-300 bg-white px-3 py-2 text-xs font-medium text-blue-900 hover:bg-blue-100 dark:border-blue-700 dark:bg-gray-800 dark:text-blue-200 dark:hover:bg-gray-700"
+                          >
+                            Open PDF Preview
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1331,6 +1679,7 @@ function OrdersPageContent() {
                     if (!cat || typeof cat !== 'string') return '';
                     return cat.toLowerCase().trim()
                       .replace(/\s*&\s*/g, ' and ')
+                      .replace(/\bspeciality\b/g, 'specialty')
                       .replace(/\s+/g, ' ');
                   };
                   
@@ -1420,6 +1769,7 @@ function OrdersPageContent() {
                     setShowEditModal(false);
                     setSelectedOrder(null);
                     setEditingOrder({});
+                    setEditAttachmentFile(null);
                   }}
                   className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 p-2"
                 >
@@ -1488,6 +1838,30 @@ function OrdersPageContent() {
                     placeholder="Add notes about this order..."
                   />
                 </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-blue-900 dark:text-white mb-2">
+                    Attachment (Image/PDF)
+                  </label>
+                  <input
+                    type="file"
+                    accept="image/*,application/pdf,.pdf"
+                    onChange={(e) => setEditAttachmentFile(e.target.files?.[0] || null)}
+                    className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-gray-900 focus:border-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-900/50 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                  />
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    Upload screenshot/image/PDF (max 10MB).
+                  </p>
+                  {editAttachmentFile ? (
+                    <p className="mt-1 text-xs text-green-700 dark:text-green-400">
+                      Selected: {editAttachmentFile.name}
+                    </p>
+                  ) : editingOrder?.attachment?.fileName ? (
+                    <p className="mt-1 text-xs text-gray-600 dark:text-gray-300">
+                      Current: {editingOrder.attachment.fileName}
+                    </p>
+                  ) : null}
+                </div>
                 
                 <div className="flex flex-col sm:flex-row justify-end gap-3">
                   <button
@@ -1496,6 +1870,7 @@ function OrdersPageContent() {
                       setShowEditModal(false);
                       setSelectedOrder(null);
                       setEditingOrder({});
+                      setEditAttachmentFile(null);
                     }}
                     className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 dark:bg-gray-600 dark:text-gray-300 dark:hover:bg-gray-500 rounded-lg"
                   >
@@ -1510,6 +1885,66 @@ function OrdersPageContent() {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Attachment Preview Lightbox */}
+      {attachmentPreview && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-6xl rounded-xl border border-white/10 bg-gray-900 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium text-white">{attachmentPreview.name}</p>
+                <p className="text-xs text-gray-300">
+                  {attachmentPreview.type || "attachment"}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <a
+                  href={attachmentPreview.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-500"
+                >
+                  Open New Tab
+                </a>
+                <a
+                  href={attachmentPreview.url}
+                  download={attachmentPreview.name}
+                  className="rounded-lg border border-white/20 bg-transparent px-3 py-1.5 text-xs font-medium text-white hover:bg-white/10"
+                >
+                  Download
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setAttachmentPreview(null)}
+                  className="rounded-lg border border-white/20 bg-transparent px-3 py-1.5 text-xs font-medium text-white hover:bg-white/10"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+
+            <div className="max-h-[80vh] min-h-[60vh] overflow-auto bg-black">
+              {attachmentPreview.type.startsWith("image/") ? (
+                <img
+                  src={attachmentPreview.url}
+                  alt={attachmentPreview.name}
+                  className="mx-auto max-h-[80vh] w-auto object-contain"
+                />
+              ) : attachmentPreview.type === "application/pdf" ? (
+                <iframe
+                  src={attachmentPreview.url}
+                  title={attachmentPreview.name}
+                  className="h-[80vh] w-full bg-white"
+                />
+              ) : (
+                <div className="flex h-[60vh] items-center justify-center p-6 text-center text-gray-300">
+                  Preview is not available for this file type. Use Open New Tab or Download.
+                </div>
+              )}
             </div>
           </div>
         </div>

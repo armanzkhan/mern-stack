@@ -11,8 +11,20 @@ const realtimeService = require("../services/realtimeService");
 // Get all customers (admin/manager view)
 exports.getAllCustomers = async (req, res) => {
   try {
-    const { page = 1, limit = 10, search, status, company_id } = req.query;
-    const companyId = (company_id || req.user?.company_id || "RESSICHEM").trim();
+    const { page: pageRaw = 1, limit: limitRaw = 10, search, status, company_id } = req.query;
+    const page = Math.max(1, parseInt(String(pageRaw), 10) || 1);
+    const limit = Math.min(5000, Math.max(1, parseInt(String(limitRaw), 10) || 10));
+    // Prefer explicit query (?company_id=), else live User.company_id from DB (avoids stale JWT vs DB),
+    // else JWT, else default tenant.
+    let companyId;
+    if (company_id && String(company_id).trim()) {
+      companyId = String(company_id).trim();
+    } else if (req.user?.user_id) {
+      const dbUser = await User.findOne({ user_id: req.user.user_id }).select("company_id").lean();
+      companyId = (dbUser?.company_id || req.user.company_id || "RESSICHEM").trim();
+    } else {
+      companyId = (req.user?.company_id || "RESSICHEM").trim();
+    }
     // Case-insensitive company_id so RESSICHEM/Ressichem/ressichem all match (fixes dashboard count off-by-one)
     const companyIdEscaped = String(companyId).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const query = { company_id: new RegExp(`^${companyIdEscaped}$`, "i") };
@@ -35,14 +47,15 @@ exports.getAllCustomers = async (req, res) => {
       .populate('assignedManagers.manager_id', 'user_id assignedCategories managerLevel')
       .populate('assignedManagers.assignedBy', 'firstName lastName email')
       .sort({ createdAt: -1 })
-      .limit(limit * 1)
+      .limit(limit)
       .skip((page - 1) * limit);
     
     const total = await Customer.countDocuments(query);
+    const totalPages = Math.max(1, Math.ceil(total / limit));
     
     res.json({
       customers,
-      totalPages: Math.ceil(total / limit),
+      totalPages,
       currentPage: page,
       total
     });

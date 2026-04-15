@@ -24,12 +24,17 @@ const categoryRoutes = require("./routes/categoryRoutes");
 const invoiceRoutes = require("./routes/invoiceRoutes");
 const customerLedgerRoutes = require("./routes/customerLedgerRoutes");
 const productImageRoutes = require("./routes/productImageRoutes");
+const requestTimingMiddleware = require("./middleware/requestTimingMiddleware");
 
 // ===== App Setup =====
 const app = express();
 app.use(cors());
-app.use(express.json());
+// Attachments are sent as base64 data URLs in JSON payloads.
+// Increase parser limits from Express defaults (100kb) to avoid 413 on order updates.
+app.use(express.json({ limit: "20mb" }));
+app.use(express.urlencoded({ extended: true, limit: "20mb" }));
 app.use(morgan("dev"));
+app.use(requestTimingMiddleware);
 
 // ===== Static uploads (profile images etc.) =====
 const uploadsRoot = path.join(__dirname, "uploads");

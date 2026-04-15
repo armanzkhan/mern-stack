@@ -21,6 +21,7 @@ class ItemApprovalService {
       .replace(/\s+/g, ' ') // Normalize multiple spaces to single space
       .replace(/\s*&\s*/g, ' and ') // Replace & with " and "
       .replace(/\s+and\s+/g, ' and ') // Normalize "and" spacing
+      .replace(/\bspeciality\b/g, 'specialty') // Handle speciality/specialty spelling variance
       .trim();
   }
   

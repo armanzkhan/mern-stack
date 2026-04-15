@@ -84,6 +84,9 @@ const NotificationSchema = new mongoose.Schema({
 
 // Indexes for performance
 NotificationSchema.index({ company_id: 1, status: 1 });
+NotificationSchema.index({ company_id: 1, createdAt: -1 });
+NotificationSchema.index({ company_id: 1, type: 1, createdAt: -1 });
+NotificationSchema.index({ company_id: 1, priority: 1, createdAt: -1 });
 NotificationSchema.index({ targetType: 1, targetIds: 1 });
 NotificationSchema.index({ scheduled_at: 1 });
 NotificationSchema.index({ createdAt: -1 });

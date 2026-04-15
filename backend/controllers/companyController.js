@@ -1,5 +1,6 @@
 const Company = require("../models/Company");
 const User = require("../models/User");
+const Invoice = require("../models/Invoice");
 const notificationService = require("../services/notificationService");
 
 // Get all companies (super admin only)
@@ -131,18 +132,34 @@ exports.getCompanyStats = async (req, res) => {
   try {
     const { company_id } = req.params;
     
-    const [userCount, customerCount, orderCount, productCount] = await Promise.all([
+    const [userCount, customerCount, orderCount, productCount, managerCount, invoiceAgg] = await Promise.all([
       User.countDocuments({ company_id }),
       require("../models/Customer").countDocuments({ company_id }),
       require("../models/Order").countDocuments({ company_id }),
-      require("../models/Product").countDocuments({ company_id })
+      require("../models/Product").countDocuments({ company_id }),
+      User.countDocuments({ company_id, isManager: true }),
+      Invoice.aggregate([
+        { $match: { company_id } },
+        {
+          $group: {
+            _id: null,
+            totalInvoices: { $sum: 1 },
+            totalInvoiceAmount: { $sum: { $ifNull: ["$total", 0] } },
+          },
+        },
+      ]),
     ]);
+
+    const invoiceStats = Array.isArray(invoiceAgg) && invoiceAgg.length > 0 ? invoiceAgg[0] : null;
     
     res.json({
       userCount,
       customerCount,
       orderCount,
-      productCount
+      productCount,
+      managerCount,
+      totalInvoices: Number(invoiceStats?.totalInvoices || 0),
+      totalInvoiceAmount: Number(invoiceStats?.totalInvoiceAmount || 0),
     });
   } catch (err) {
     console.error("Get company stats error:", err);

@@ -3,7 +3,7 @@
 import { ProtectedRoute } from "@/components/Auth/ProtectedRoute";
 import { PermissionGate } from "@/components/Auth/PermissionGate";
 import Breadcrumb from "@/components/Breadcrumbs/Breadcrumb";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useUser } from "@/components/Auth/user-context";
 import { getAuthHeaders, handleAuthError } from "@/lib/auth";
@@ -71,6 +71,22 @@ function categoriesMatch(a: string, b: string): boolean {
 }
 
 /** Supports `{ mainCategory }` (normal) and legacy `category` as a plain string. */
+function filterCustomersForPicker(customers: Customer[], search: string): Customer[] {
+  const t = search.toLowerCase().trim();
+  if (!t) {
+    return [...customers].sort((a, b) =>
+      (a.companyName || "").localeCompare(b.companyName || "", undefined, { sensitivity: "base" })
+    );
+  }
+  return customers.filter(
+    (c) =>
+      (c.companyName || "").toLowerCase().includes(t) ||
+      (c.contactName || "").toLowerCase().includes(t) ||
+      (c.email || "").toLowerCase().includes(t) ||
+      (c.phone && String(c.phone).toLowerCase().includes(t))
+  );
+}
+
 function getProductMainCategory(product: Product): string | null {
   const c = product.category;
   if (c == null) return null;
@@ -119,6 +135,8 @@ function dedupeCategoryDropdownLabels(
 export default function CreateOrderPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [customersLoading, setCustomersLoading] = useState(true);
+  const [productsLoading, setProductsLoading] = useState(true);
   const [categories, setCategories] = useState<Category[]>([]);
   const [managerProfile, setManagerProfile] = useState<any>(null);
   const [customerAssignedManagers, setCustomerAssignedManagers] = useState<any[]>([]);
@@ -131,7 +149,10 @@ export default function CreateOrderPage() {
   const [savingTdsLinks, setSavingTdsLinks] = useState<Set<string>>(new Set());
   const [productSearchTerms, setProductSearchTerms] = useState<{ [key: number]: string }>({});
   const [productSearchOpen, setProductSearchOpen] = useState<{ [key: number]: boolean }>({});
+  const [customerSearchTerm, setCustomerSearchTerm] = useState("");
+  const [customerSearchOpen, setCustomerSearchOpen] = useState(false);
   const [isCategoryChanging, setIsCategoryChanging] = useState<{ [key: number]: boolean }>({});
+  const [orderAttachmentFile, setOrderAttachmentFile] = useState<File | null>(null);
   const [formData, setFormData] = useState({
     customer: "",
     items: [] as OrderItem[],
@@ -150,6 +171,23 @@ export default function CreateOrderPage() {
   });
   const router = useRouter();
   const { user, loading: userLoading } = useUser();
+  const customerBootstrapAttemptedRef = useRef(false);
+  const isCustomerSession =
+    !!(
+      user?.isCustomer ||
+      user?.userType === "customer" ||
+      String(user?.role || "").toLowerCase() === "customer"
+    );
+
+  // Prefetch neighbor route to reduce transition latency.
+  useEffect(() => {
+    router.prefetch('/orders');
+  }, [router]);
+
+  const customerPickerMatches = useMemo(
+    () => filterCustomersForPicker(customers, customerSearchTerm),
+    [customers, customerSearchTerm]
+  );
 
   // Get products for display - show ALL products for customers, filtered for managers
   const getFilteredProducts = () => {
@@ -272,91 +310,187 @@ export default function CreateOrderPage() {
     });
   };
 
-  /** Load every active product (backend paginates; avoids missing items beyond the first page). */
-  const fetchAllProductsForOrderForm = async (): Promise<Product[]> => {
-    const pageSize = 500;
-    let page = 1;
-    const all: Product[] = [];
-    try {
-      for (;;) {
-        const productsRes = await fetch(
-          `/api/products?limit=${pageSize}&page=${page}&meta=1`,
-          { headers: getAuthHeaders() }
-        );
-        if (!productsRes.ok) {
-          console.error("Products fetch failed:", productsRes.status);
-          return all.length > 0 ? all : [];
-        }
-        const raw: unknown = await productsRes.json();
-        if (Array.isArray(raw)) {
-          all.push(...raw);
-          break;
-        }
-        const body = raw as { products?: Product[]; pagination?: { totalPages?: number } };
-        const chunk = body.products || [];
-        all.push(...chunk);
-        const totalPages = body.pagination?.totalPages ?? 1;
-        if (page >= totalPages || chunk.length === 0) break;
-        page += 1;
-      }
-    } catch (e) {
-      console.error("Error loading products:", e);
-    }
-    return all;
-  };
-
   // Fetch customers, products, categories, and manager profile
   const fetchData = async () => {
     try {
       setLoading(true);
-      
-      const [customersRes, productsList, categoriesRes, managerRes] = await Promise.all([
-        fetch('/api/customers', {
-          headers: getAuthHeaders(),
-        }),
-        fetchAllProductsForOrderForm(),
-        fetch('/api/products/categories', {
-          headers: getAuthHeaders(),
-        }),
-        fetch('/api/managers/profile', {
-          headers: getAuthHeaders(),
-        })
-      ]);
+      setCustomersLoading(true);
+      setProductsLoading(true);
+      const isCustomerUser = isCustomerSession;
 
-      if (customersRes.ok) {
-        const customersData = await customersRes.json();
-        const customersArray = Array.isArray(customersData) ? customersData : customersData.customers || [];
-        setCustomers(customersArray);
-      } else {
-        if (handleAuthError(customersRes.status, "Please log in to view customers")) {
-          setLoading(false);
-          return;
+      // Customer flow doesn't need full customer directory (very heavy), keep it instant.
+      const customersPromise = isCustomerUser
+        ? Promise.resolve().then(() => {
+            setCustomers([]);
+            setCustomersLoading(false);
+          })
+        : (async () => {
+            // Progressive customer loading: first page renders quickly, remaining pages fill in.
+            const pageSize = 200;
+            const firstRes = await fetch(`/api/customers?limit=${pageSize}&page=1`, {
+              headers: getAuthHeaders(),
+            });
+            if (!firstRes.ok) {
+              if (handleAuthError(firstRes.status, "Please log in to view customers")) {
+                setCustomers([]);
+                return;
+              }
+              throw new Error(`Customers first page failed: ${firstRes.status}`);
+            }
+
+            const firstRaw: unknown = await firstRes.json();
+            const firstBody = Array.isArray(firstRaw)
+              ? { customers: firstRaw as Customer[], totalPages: 1, total: (firstRaw as Customer[]).length }
+              : (firstRaw as { customers?: Customer[]; totalPages?: number; total?: number });
+            const firstChunk = firstBody.customers || [];
+            const totalPages = Math.max(1, Number(firstBody.totalPages || 1));
+            const totalCount = Number(firstBody.total || 0);
+
+            setCustomers(firstChunk);
+            setCustomersLoading(false);
+
+            if (totalPages > 1 && firstChunk.length < totalCount) {
+              void (async () => {
+                try {
+                  const merged = [...firstChunk];
+                  for (let page = 2; page <= totalPages; page++) {
+                    const res = await fetch(`/api/customers?limit=${pageSize}&page=${page}`, {
+                      headers: getAuthHeaders(),
+                    });
+                    if (!res.ok) break;
+                    const raw: unknown = await res.json();
+                    const body = Array.isArray(raw)
+                      ? { customers: raw as Customer[] }
+                      : (raw as { customers?: Customer[] });
+                    const chunk = body.customers || [];
+                    if (chunk.length === 0) break;
+                    merged.push(...chunk);
+                    const seen = new Set<string>();
+                    const deduped = merged.filter((c) => {
+                      const id = String(c._id);
+                      if (seen.has(id)) return false;
+                      seen.add(id);
+                      return true;
+                    });
+                    setCustomers(deduped);
+                    if (typeof totalCount === "number" && totalCount > 0 && deduped.length >= totalCount) {
+                      break;
+                    }
+                  }
+                } catch (error) {
+                  console.warn("Background customers fetch failed:", error);
+                }
+              })();
+            }
+          })()
+            .catch((error) => {
+              console.error("Error loading customers:", error);
+              setCustomers([]);
+            })
+            .finally(() => setCustomersLoading(false));
+
+      // Progressive product loading: first page fast, remaining pages in background.
+      const productsPromise = (async () => {
+        const pageSize = 200;
+        const firstRes = await fetch(`/api/products?limit=${pageSize}&page=1&meta=1`, {
+          headers: getAuthHeaders(),
+        });
+        if (!firstRes.ok) {
+          throw new Error(`Products first page failed: ${firstRes.status}`);
         }
-        setCustomers([]);
-      }
+        const firstRaw: unknown = await firstRes.json();
+        const firstBody = Array.isArray(firstRaw)
+          ? { products: firstRaw as Product[], pagination: { totalPages: 1 } }
+          : (firstRaw as { products?: Product[]; pagination?: { totalPages?: number } });
+        const firstChunk = firstBody.products || [];
+        const totalPages = Math.max(1, Number(firstBody.pagination?.totalPages || 1));
 
-      setProducts(productsList);
+        setProducts(firstChunk);
+        setProductsLoading(false);
 
-      if (categoriesRes.ok) {
-        const categoriesData = await categoriesRes.json();
-        const categories = Array.isArray(categoriesData) ? categoriesData : categoriesData.categories || [];
-        setCategories(categories);
-      } else {
+        if (totalPages > 1) {
+          void (async () => {
+            try {
+              const merged = [...firstChunk];
+              for (let page = 2; page <= totalPages; page++) {
+                const res = await fetch(`/api/products?limit=${pageSize}&page=${page}&meta=1`, {
+                  headers: getAuthHeaders(),
+                });
+                if (!res.ok) break;
+                const raw: unknown = await res.json();
+                const body = Array.isArray(raw)
+                  ? { products: raw as Product[] }
+                  : (raw as { products?: Product[] });
+                const chunk = body.products || [];
+                if (chunk.length === 0) break;
+                merged.push(...chunk);
+                const seen = new Set<string>();
+                const deduped = merged.filter((p) => {
+                  const id = String(p._id);
+                  if (seen.has(id)) return false;
+                  seen.add(id);
+                  return true;
+                });
+                setProducts(deduped);
+              }
+            } catch (error) {
+              console.warn("Background products fetch failed:", error);
+            }
+          })();
+        }
+      })()
+        .catch((error) => {
+          console.error("Error loading products:", error);
+          setProducts([]);
+        })
+        .finally(() => setProductsLoading(false));
+
+      const categoriesPromise = fetch('/api/products/categories', {
+        headers: getAuthHeaders(),
+      }).then(async (categoriesRes) => {
+        if (categoriesRes.ok) {
+          const categoriesData = await categoriesRes.json();
+          const categories = Array.isArray(categoriesData) ? categoriesData : categoriesData.categories || [];
+          setCategories(categories);
+        } else {
+          setCategories([]);
+        }
+      }).catch((error) => {
+        console.error("Error loading categories:", error);
         setCategories([]);
-      }
+      });
 
-      if (managerRes.ok) {
-        const managerData = await managerRes.json();
-        setManagerProfile(managerData.manager || managerData);
-      } else {
-        setManagerProfile(null);
-      }
+      const shouldFetchManagerProfile = !isCustomerUser && !!user?.isManager;
+      const managerPromise = shouldFetchManagerProfile
+        ? fetch('/api/managers/profile', {
+            headers: getAuthHeaders(),
+          }).then(async (managerRes) => {
+            if (managerRes.ok) {
+              const managerData = await managerRes.json();
+              setManagerProfile(managerData.manager || managerData);
+            } else {
+              setManagerProfile(null);
+            }
+          }).catch((error) => {
+            console.error("Error loading manager profile:", error);
+            setManagerProfile(null);
+          })
+        : Promise.resolve().then(() => setManagerProfile(null));
+
+      await Promise.allSettled([
+        customersPromise,
+        productsPromise,
+        categoriesPromise,
+        managerPromise,
+      ]);
     } catch (error) {
       console.error('Error fetching data:', error);
       setCustomers([]);
       setProducts([]);
       setCategories([]);
       setManagerProfile(null);
+      setCustomersLoading(false);
+      setProductsLoading(false);
     } finally {
       setLoading(false);
     }
@@ -374,10 +508,6 @@ export default function CreateOrderPage() {
     
     fetchData();
     
-    // Fetch customer statistics if user is a customer
-    if (user?.isCustomer) {
-      fetchCustomerStatistics();
-    }
   }, [user, userLoading, router]);
 
   // Fetch customer's assigned managers and their categories
@@ -766,20 +896,32 @@ export default function CreateOrderPage() {
     }
   };
 
-  // Close product search dropdown when clicking outside
+  // Close product / customer search dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as HTMLElement;
-      if (!target.closest('.product-search-container')) {
+      if (!target.closest(".product-search-container")) {
         setProductSearchOpen({});
+      }
+      if (!target.closest(".customer-search-container")) {
+        setCustomerSearchOpen(false);
       }
     };
 
-    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener("mousedown", handleClickOutside);
     return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener("mousedown", handleClickOutside);
     };
   }, []);
+
+  // Keep search field label in sync when customer id is set (e.g. after data loads)
+  useEffect(() => {
+    if (user?.isCustomer || !formData.customer) return;
+    const c = customers.find((x) => x._id === formData.customer);
+    if (c) {
+      setCustomerSearchTerm(`${c.companyName} - ${c.contactName}`);
+    }
+  }, [formData.customer, customers, user?.isCustomer]);
 
   // Add timeout to prevent infinite loading
   useEffect(() => {
@@ -793,138 +935,58 @@ export default function CreateOrderPage() {
     return () => clearTimeout(timeout);
   }, [loading]);
 
-  // Auto-select customer when customer user is logged in
+  // Auto-select customer when customer user is logged in (run once per session).
   useEffect(() => {
-    if (user?.isCustomer && !formData.customer) {
-      console.log('🔍 Auto-selecting customer for:', user.email);
-      
-      // First, try to use customer_id from user profile if available
-      if (user.customerProfile?.customer_id) {
-        const customerId = String(user.customerProfile.customer_id);
-        console.log('✅ Found customer ID from user profile:', customerId);
-        setFormData(prev => ({
-          ...prev,
-          customer: customerId
-        }));
-        setCustomerNotFound(false);
-        // Fetch statistics after customer is set
-        fetchCustomerStatistics(customerId);
-        // Fetch assigned managers for customer
-        fetchCustomerAssignedManagers(customerId);
-        return;
-      }
-      
-      // Otherwise, try to find customer by email match in customers list
-      let customerFound = false;
-      if (customers.length > 0) {
-        const customerRecord = customers.find(customer => 
-          customer.email.toLowerCase() === user.email?.toLowerCase()
-        );
-        
-        if (customerRecord) {
-          const customerId = customerRecord._id;
-          console.log('✅ Found customer in customers list:', customerId);
-          setFormData(prev => ({
-            ...prev,
-            customer: customerId
-          }));
-          setCustomerNotFound(false);
-          customerFound = true;
-          // Fetch statistics after customer is set
-          fetchCustomerStatistics(customerId);
-          // Fetch assigned managers for customer
-          fetchCustomerAssignedManagers(customerId);
-        } else {
-          console.log('⚠️ Customer not found in customers list for:', user.email);
-        }
-      }
-      
-      // Always try fetching customer profile from dashboard API (even if found in list, to ensure we have latest data)
-      // This ensures new customers are found even if they're not in the initial customers list
-      const fetchCustomerProfile = async () => {
-        try {
-          console.log('🔍 Fetching customer profile from dashboard API...');
-          const response = await fetch('/api/customers/dashboard', {
-            headers: getAuthHeaders(),
-          });
-          
-          console.log('📊 Dashboard API response status:', response.status);
-          
-          if (response.ok) {
-            const data = await response.json();
-            console.log('📊 Dashboard data:', data);
-            
-            if (data.customer?._id) {
-              const customerId = data.customer._id;
-              console.log('✅ Found customer from dashboard:', customerId);
-              setFormData(prev => ({
-                ...prev,
-                customer: customerId
-              }));
-              setCustomerNotFound(false);
-              // Also add to customers list if not already there
-              setCustomers(prev => {
-                if (!prev.find(c => c._id === customerId)) {
-                  console.log('➕ Adding customer to customers list:', data.customer);
-                  return [...prev, data.customer];
-                }
-                return prev;
-              });
-              // Fetch statistics after customer is set
-              fetchCustomerStatistics(customerId);
-              // Fetch assigned managers for customer
-              fetchCustomerAssignedManagers(customerId);
-              return;
-            } else {
-              console.warn('⚠️ Dashboard API returned no customer data');
-            }
-          } else {
-            const errorText = await response.text();
-            console.warn('⚠️ Dashboard API failed:', {
-              status: response.status,
-              body: errorText.substring(0, 200)
-            });
-          }
-        } catch (error) {
-          console.error('❌ Error fetching customer profile:', error);
-        }
-        
-        // If we get here and customer wasn't found, mark as not found
-        if (!customerFound && !formData.customer) {
-          console.warn('⚠️ Customer record not found for email:', user.email);
-          setCustomerNotFound(true);
-          // Still try to fetch statistics even if customer not found (might work if customer exists but not linked)
-          fetchCustomerStatistics();
-        }
-      };
-      
-      // Fetch customer profile immediately (don't wait for loading to finish)
-      fetchCustomerProfile();
-    } else if (user?.isCustomer && formData.customer) {
-      // If customer is already set, just fetch statistics
-      console.log('✅ Customer already set, fetching statistics...');
-      fetchCustomerStatistics(formData.customer);
-    } else if (user?.isCustomer) {
-      // If user is a customer but no customer record found, still try to fetch statistics
-      console.log('⚠️ User is customer but no customer record found, fetching statistics anyway...');
-      fetchCustomerStatistics();
+    if (!isCustomerSession || formData.customer || customerBootstrapAttemptedRef.current) return;
+    customerBootstrapAttemptedRef.current = true;
+
+    if (user?.customerProfile?.customer_id) {
+      const customerId = String(user.customerProfile.customer_id);
+      setFormData((prev) => ({ ...prev, customer: customerId }));
+      setCustomerNotFound(false);
+      return;
     }
-  }, [user, customers, formData.customer, loading]);
+
+    const bootstrapCustomer = async () => {
+      try {
+        const response = await fetch('/api/customers/dashboard', {
+          headers: getAuthHeaders(),
+        });
+        if (response.ok) {
+          const data = await response.json();
+          if (data.customer?._id) {
+            const customerId = data.customer._id;
+            setFormData((prev) => ({ ...prev, customer: customerId }));
+            setCustomerNotFound(false);
+            return;
+          }
+        }
+      } catch (error) {
+        console.error('❌ Error bootstrapping customer profile:', error);
+      }
+      setCustomerNotFound(true);
+    };
+
+    void bootstrapCustomer();
+  }, [isCustomerSession, formData.customer, user?.customerProfile?.customer_id]);
 
   // Refetch statistics and managers when customer changes
   useEffect(() => {
     if (formData.customer) {
-      if (user?.isCustomer) {
-        fetchCustomerStatistics(formData.customer);
-      }
-      fetchCustomerAssignedManagers(formData.customer);
+      const t = setTimeout(() => {
+        if (isCustomerSession) {
+          void fetchCustomerStatistics(formData.customer);
+        }
+        void fetchCustomerAssignedManagers(formData.customer);
+      }, 150);
+      return () => clearTimeout(t);
     } else {
       // Clear managers when no customer selected
       setCustomerAssignedManagers([]);
       setCustomerManagerCategories([]);
       setCustomerManagerDetails([]);
     }
-  }, [formData.customer, user?.isCustomer]);
+  }, [formData.customer, isCustomerSession]);
 
   // Add item to order
   const addItem = () => {
@@ -1128,6 +1190,66 @@ export default function CreateOrderPage() {
   const tax = 0;
   const total = subtotal;
 
+  const fileToDataUrl = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = () => reject(new Error("Failed to read selected file."));
+      reader.readAsDataURL(file);
+    });
+
+  const loadImageFromFile = (file: File): Promise<HTMLImageElement> =>
+    new Promise((resolve, reject) => {
+      const img = new Image();
+      const objectUrl = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(objectUrl);
+        resolve(img);
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+        reject(new Error("Failed to load image for compression."));
+      };
+      img.src = objectUrl;
+    });
+
+  const compressImageFile = async (file: File): Promise<File> => {
+    if (!String(file.type || "").toLowerCase().startsWith("image/")) return file;
+
+    const img = await loadImageFromFile(file);
+    const maxDimension = 1920;
+    const targetBytes = 1.5 * 1024 * 1024; // Prefer <= 1.5MB after compression.
+
+    const scale = Math.min(1, maxDimension / Math.max(img.width, img.height));
+    const width = Math.max(1, Math.round(img.width * scale));
+    const height = Math.max(1, Math.round(img.height * scale));
+
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return file;
+    ctx.drawImage(img, 0, 0, width, height);
+
+    let quality = 0.82;
+    let blob: Blob | null = await new Promise((resolve) =>
+      canvas.toBlob(resolve, "image/jpeg", quality)
+    );
+    while (blob && blob.size > targetBytes && quality > 0.45) {
+      quality -= 0.08;
+      blob = await new Promise((resolve) =>
+        canvas.toBlob(resolve, "image/jpeg", quality)
+      );
+    }
+    if (!blob) return file;
+
+    const baseName = file.name.replace(/\.[^.]+$/, "");
+    return new File([blob], `${baseName}.jpg`, {
+      type: "image/jpeg",
+      lastModified: Date.now(),
+    });
+  };
+
   // Handle form submission
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1165,6 +1287,34 @@ export default function CreateOrderPage() {
         company_id: 'RESSICHEM'
       };
 
+      if (orderAttachmentFile) {
+        const maxAttachmentSizeBytes = 10 * 1024 * 1024; // 10MB
+        const originalType = String(orderAttachmentFile.type || "").toLowerCase();
+        const processedAttachmentFile = originalType.startsWith("image/")
+          ? await compressImageFile(orderAttachmentFile)
+          : orderAttachmentFile;
+        const fileType = String(processedAttachmentFile.type || "").toLowerCase();
+        const isAllowedType = fileType.startsWith("image/") || fileType === "application/pdf";
+        if (!isAllowedType) {
+          setMessage("❌ Invalid file type. Please upload an image or PDF.");
+          setSubmitting(false);
+          return;
+        }
+        if (processedAttachmentFile.size > maxAttachmentSizeBytes) {
+          setMessage("❌ Attachment too large. Maximum allowed size is 10MB.");
+          setSubmitting(false);
+          return;
+        }
+        const dataUrl = await fileToDataUrl(processedAttachmentFile);
+        (orderData as any).attachment = {
+          fileName: processedAttachmentFile.name,
+          fileType: processedAttachmentFile.type || "application/octet-stream",
+          fileSize: processedAttachmentFile.size,
+          dataUrl,
+          uploadedAt: new Date().toISOString(),
+        };
+      }
+
       console.log('📦 Submitting order:', { 
         customer: orderData.customer, 
         itemsCount: orderData.items.length,
@@ -1197,7 +1347,11 @@ export default function CreateOrderPage() {
           error: errorData,
           orderData: { customer: orderData.customer, itemsCount: orderData.items.length }
         });
-        setMessage(`❌ Failed to create order: ${errorData.message || errorData.error || 'Unknown error'}`);
+        if (response.status === 413) {
+          setMessage("❌ Attachment is too large for request payload. Please upload a smaller file.");
+        } else {
+          setMessage(`❌ Failed to create order: ${errorData.message || errorData.error || 'Unknown error'}`);
+        }
       }
     } catch (error) {
       console.error('Error creating order:', error);
@@ -1239,15 +1393,10 @@ export default function CreateOrderPage() {
           <Breadcrumb pageName="Create Order" />
           
           {loading && (
-            <div className="flex items-center justify-center py-12">
-              <div className="text-center">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-                <p className="text-gray-600 dark:text-gray-400">Loading order form...</p>
-              </div>
+            <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700 dark:border-blue-900/40 dark:bg-blue-900/20 dark:text-blue-200">
+              Loading {customersLoading ? "customers" : ""}{customersLoading && productsLoading ? " and " : ""}{productsLoading ? "products" : ""} in background...
             </div>
           )}
-          
-          {!loading && (
       
       <div className="rounded-[10px] bg-white shadow-1 dark:bg-gray-dark dark:shadow-card">
         <div className="px-4 py-6 md:px-6 xl:px-9">
@@ -1281,23 +1430,90 @@ export default function CreateOrderPage() {
                   <h4 className="text-lg font-medium text-dark dark:text-white">Customer Information</h4>
                 </div>
                 
-                <div>
+                <div className="relative customer-search-container">
                   <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
                     Select Customer <span className="text-red-500">*</span>
                   </label>
-                  <select
-                    required
-                    value={formData.customer}
-                    onChange={(e) => setFormData({...formData, customer: e.target.value})}
-                    className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 text-dark focus:border-primary focus:outline-none dark:border-dark-3 dark:bg-dark-2 dark:text-white transition-colors"
-                  >
-                    <option value="">Choose a customer</option>
-                    {Array.isArray(customers) && customers.map(customer => (
-                      <option key={customer._id} value={customer._id}>
-                        {customer.companyName} - {customer.contactName}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      autoComplete="off"
+                      value={customerSearchTerm}
+                      disabled={customersLoading}
+                      onChange={(e) => {
+                        setCustomerSearchTerm(e.target.value);
+                        setCustomerSearchOpen(true);
+                        setFormData((prev) => ({ ...prev, customer: "" }));
+                      }}
+                      onFocus={() => setCustomerSearchOpen(true)}
+                      onBlur={() => {
+                        if (formData.customer) {
+                          const c = customers.find((x) => x._id === formData.customer);
+                          if (c) {
+                            setCustomerSearchTerm(`${c.companyName} - ${c.contactName}`);
+                          }
+                        }
+                      }}
+                      placeholder={customersLoading ? "Loading customers..." : "Search by company, contact, email, or phone…"}
+                      className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 pl-10 text-dark focus:border-primary focus:outline-none dark:border-dark-3 dark:bg-dark-2 dark:text-white transition-colors"
+                    />
+                    <svg
+                      className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400 dark:text-gray-500"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                      aria-hidden
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                  </div>
+                  {customerSearchOpen && (
+                    <div className="absolute z-50 mt-1 max-h-[min(70vh,520px)] w-full overflow-y-auto rounded-lg border border-stroke bg-white shadow-lg dark:border-dark-3 dark:bg-dark-2">
+                      {customersLoading ? (
+                        <div className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">
+                          Loading customers...
+                        </div>
+                      ) : customerPickerMatches.length > 0 ? (
+                        <>
+                          {customerPickerMatches.map((customer) => (
+                            <div
+                              key={customer._id}
+                              role="option"
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={() => {
+                                setFormData((prev) => ({ ...prev, customer: customer._id }));
+                                setCustomerSearchTerm(
+                                  `${customer.companyName} - ${customer.contactName}`
+                                );
+                                setCustomerSearchOpen(false);
+                              }}
+                              className={`cursor-pointer border-b border-stroke px-4 py-3 last:border-b-0 dark:border-dark-3 hover:bg-gray-100 dark:hover:bg-dark-3 ${
+                                formData.customer === customer._id
+                                  ? "bg-blue-50 dark:bg-blue-900/20"
+                                  : ""
+                              }`}
+                            >
+                              <div className="font-medium text-dark dark:text-white">
+                                {customer.companyName} — {customer.contactName}
+                              </div>
+                              <div className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                                {customer.email}
+                                {customer.phone ? ` · ${customer.phone}` : ""}
+                              </div>
+                            </div>
+                          ))}
+                        </>
+                      ) : (
+                        <div className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">
+                          {customersLoading
+                            ? "Loading customers..."
+                            : customers.length === 0
+                            ? "No customers loaded."
+                            : "No customers match your search."}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -1795,6 +2011,43 @@ export default function CreateOrderPage() {
                   className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 text-dark focus:border-primary focus:outline-none dark:border-dark-3 dark:bg-dark-2 dark:text-white transition-colors"
                 />
               </div>
+
+              <div className="rounded-xl border border-blue-200 bg-blue-50/60 p-4 dark:border-blue-900/40 dark:bg-blue-900/10">
+                <div className="mb-3 flex items-center gap-2">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 dark:bg-blue-900/30">
+                    <svg className="h-4 w-4 text-blue-700 dark:text-blue-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828L18 9.828a4 4 0 10-5.656-5.656L5.757 10.757a6 6 0 108.486 8.486L20 13" />
+                    </svg>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-blue-900 dark:text-blue-200">
+                      Add Attachment (Screenshot / Image / PDF)
+                    </label>
+                    <p className="text-xs text-blue-800 dark:text-blue-300">
+                      Attach proof, screenshot, or supporting document for this order.
+                    </p>
+                  </div>
+                </div>
+
+                <input
+                  type="file"
+                  accept="image/*,application/pdf,.pdf"
+                  onChange={(e) => setOrderAttachmentFile(e.target.files?.[0] || null)}
+                  className="w-full rounded-lg border border-blue-300 bg-white px-4 py-3 text-dark focus:border-primary focus:outline-none dark:border-blue-700 dark:bg-dark-2 dark:text-white transition-colors"
+                />
+                <p className="mt-2 text-xs text-gray-600 dark:text-gray-300">
+                  Supported: JPG, PNG, WEBP, GIF, PDF (max 10MB).
+                </p>
+                {orderAttachmentFile ? (
+                  <div className="mt-2 inline-flex items-center rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-800 dark:bg-green-900/30 dark:text-green-300">
+                    Selected: {orderAttachmentFile.name}
+                  </div>
+                ) : (
+                  <div className="mt-2 inline-flex items-center rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                    No file selected
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Order Summary */}
@@ -1878,7 +2131,6 @@ export default function CreateOrderPage() {
           </form>
         </div>
       </div>
-          )}
         </>
       )}
     </ProtectedRoute>

@@ -4,6 +4,7 @@
 const express = require('express');
 const cors = require('cors');
 const { connectToDatabase } = require('./_utils/db');
+const requestTimingMiddleware = require('../middleware/requestTimingMiddleware');
 
 // Create Express app (outside handler for better performance)
 let app;
@@ -16,8 +17,10 @@ function initializeApp() {
 
   // Middleware
   app.use(cors());
-  app.use(express.json());
-  app.use(express.urlencoded({ extended: true }));
+  // Keep limits aligned with local server for attachment payloads.
+  app.use(express.json({ limit: '20mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '20mb' }));
+  app.use(requestTimingMiddleware);
 
   // Health check (handled directly in serverless function, but keep for compatibility)
   app.get('/api/health/test', (req, res) =>

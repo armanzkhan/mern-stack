@@ -67,50 +67,29 @@ export default function CompanyDashboard() {
       try {
         const token = localStorage.getItem("token");
         if (!token) {
-          console.log('No token found, skipping stats fetch');
+          return;
+        }
+        const companyId = String(user?.company_id || "").trim();
+        if (!companyId) return;
+
+        // Fast path: fetch pre-aggregated stats from a single endpoint.
+        const statsRes = await fetch(`/api/companies/${encodeURIComponent(companyId)}/stats`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        if (!statsRes.ok) {
           return;
         }
 
-        console.log('Fetching stats for company dashboard...');
-        
-        // Fetch stats from different endpoints
-        const [usersRes, customersRes, ordersRes, productsRes, managersRes, invoicesRes] = await Promise.all([
-          fetch('/api/users', { headers: { 'Authorization': `Bearer ${token}` } }),
-          fetch('/api/customers', { headers: { 'Authorization': `Bearer ${token}` } }),
-          fetch('/api/orders', { headers: { 'Authorization': `Bearer ${token}` } }),
-          fetch('/api/products', { headers: { 'Authorization': `Bearer ${token}` } }),
-          fetch('/api/managers', { headers: { 'Authorization': `Bearer ${token}` } }),
-          fetch('/api/invoices/stats', { headers: { 'Authorization': `Bearer ${token}` } })
-        ]);
-
-        console.log('API responses:', {
-          users: usersRes.status,
-          customers: customersRes.status,
-          orders: ordersRes.status,
-          products: productsRes.status,
-          managers: managersRes.status,
-          invoices: invoicesRes.status
-        });
-
-        const [users, customers, orders, products, managers, invoices] = await Promise.all([
-          usersRes.ok ? usersRes.json() : { users: [] },
-          customersRes.ok ? customersRes.json() : { customers: [] },
-          ordersRes.ok ? ordersRes.json() : { orders: [] },
-          productsRes.ok ? productsRes.json() : { products: [] },
-          managersRes.ok ? managersRes.json() : { managers: [] },
-          invoicesRes.ok ? invoicesRes.json() : { data: { totalInvoices: 0, totalAmount: 0 } }
-        ]);
-
-        console.log('Parsed data:', { users, customers, orders, products, managers, invoices });
-
+        const data = await statsRes.json();
         setStats({
-          totalUsers: Array.isArray(users) ? users.length : users.users?.length || 0,
-          totalCustomers: typeof customers?.total === 'number' ? customers.total : (Array.isArray(customers) ? customers.length : customers.customers?.length || 0),
-          totalOrders: typeof orders?.total === 'number' ? orders.total : (Array.isArray(orders) ? orders.length : orders.orders?.length || 0),
-          totalProducts: Array.isArray(products) ? products.length : products.products?.length || 0,
-          totalManagers: Array.isArray(managers) ? managers.length : managers.managers?.length || 0,
-          totalInvoices: invoices.data?.totalInvoices || 0,
-          totalInvoiceAmount: invoices.data?.totalAmount || 0
+          totalUsers: Number(data.userCount || 0),
+          totalCustomers: Number(data.customerCount || 0),
+          totalOrders: Number(data.orderCount || 0),
+          totalProducts: Number(data.productCount || 0),
+          totalManagers: Number(data.managerCount || 0),
+          totalInvoices: Number(data.totalInvoices || 0),
+          totalInvoiceAmount: Number(data.totalInvoiceAmount || 0),
         });
       } catch (error) {
         console.error('Error fetching stats:', error);
@@ -121,8 +100,6 @@ export default function CompanyDashboard() {
       fetchStats();
     }
   }, [user, loading]);
-
-  console.log('Company Dashboard - User state:', { user, loading });
 
   if (loading) {
     return (

@@ -28,6 +28,13 @@ const orderSchema = new mongoose.Schema(
     totalDiscount: { type: Number, default: 0 },
     finalTotal: { type: Number },
     notes: { type: String },
+    attachment: {
+      fileName: { type: String },
+      fileType: { type: String },
+      fileSize: { type: Number },
+      dataUrl: { type: String },
+      uploadedAt: { type: Date },
+    },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     company_id: { type: String, required: true, default: "RESSICHEM" },
     
@@ -59,5 +66,11 @@ const orderSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+// Read-path indexes for order listing and status dashboards.
+orderSchema.index({ company_id: 1, createdAt: -1 });
+orderSchema.index({ company_id: 1, status: 1, createdAt: -1 });
+orderSchema.index({ company_id: 1, customer: 1, createdAt: -1 });
+orderSchema.index({ company_id: 1, approvalStatus: 1, createdAt: -1 });
 
 module.exports = mongoose.model("Order", orderSchema);
