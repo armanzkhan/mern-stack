@@ -15,6 +15,11 @@ router.put('/:id', auth, categoryController.updateCategory);
 // Delete category
 router.delete('/:id', auth, categoryController.deleteCategory);
 
+// Bulk activate/deactivate categories
+router.patch('/bulk-status', auth, categoryController.bulkUpdateCategoryStatus);
+router.patch('/bulk-delete', auth, categoryController.bulkDeleteCategories);
+router.patch('/bulk-move-parent', auth, categoryController.bulkMoveCategoryParent);
+
 // Assign categories to manager
 router.post('/assign-to-manager', auth, categoryController.assignCategoriesToManager);
 

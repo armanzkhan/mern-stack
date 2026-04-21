@@ -9,6 +9,7 @@ const notificationTriggerService = require("../services/notificationTriggerServi
 const categoryNotificationService = require("../services/categoryNotificationService");
 const realtimeService = require("../services/realtimeService");
 const itemApprovalService = require("../services/itemApprovalService");
+const OrderItemApproval = require("../models/OrderItemApproval");
 
 const LOGISTICS_STATUSES = ["dispatch", "hold"];
 const MANAGER_STATUSES = ["processing", "rejected"];
@@ -82,6 +83,21 @@ const getAllowedStatusesForUserAsync = async (req, companyId) => {
     return MANAGER_STATUSES;
   }
   return [...LOGISTICS_STATUSES, ...MANAGER_STATUSES];
+};
+
+const isCategoryManagerRequest = async (req, companyId) => {
+  if (req.user?.isSuperAdmin || isCompanyAdminUser(req)) return false;
+  if (await isLogisticManagerRequest(req, companyId)) return false;
+
+  let isMgr = req.user?.isManager === true;
+  if (!isMgr && req.user?.user_id) {
+    const fullUser = await User.findOne({
+      user_id: req.user.user_id,
+      company_id: companyId,
+    }).select("isManager");
+    if (fullUser?.isManager) isMgr = true;
+  }
+  return isMgr;
 };
 
 // Create order
@@ -521,12 +537,13 @@ exports.getOrders = async (req, res) => {
           fullUserRoles.includes("logistic_manager"));
 
       if (isLogisticUser) {
-        // Logistics board: only approved orders are actionable to move into hold/dispatch.
+        // Logistics board: approved orders are actionable, while dispatch/hold remain visible for tracking.
+        const logisticsVisibleStatuses = ["approved", ...LOGISTICS_STATUSES];
         query = {
           company_id: companyFilter,
-          status: "approved",
+          status: { $in: logisticsVisibleStatuses },
         };
-        console.log(`🚚 Logistic manager ${req.user?.email}: returning approved orders only`);
+        console.log(`🚚 Logistic manager ${req.user?.email}: returning logistics-visible orders (${logisticsVisibleStatuses.join(", ")})`);
       }
       
       // Company admins / super admins should always see all company orders,
@@ -807,7 +824,7 @@ exports.getOrders = async (req, res) => {
     if (req.user && fullUser && fullUser.isManager) {
       console.log(`✅ Manager ${req.user?.email}: Returning ${orders.length} orders (already filtered by approvals/categories)`);
     } else if (isLogisticManagerUser(req)) {
-      console.log(`✅ Logistic manager ${req.user?.email}: Returning ${orders.length} approved orders`);
+      console.log(`✅ Logistic manager ${req.user?.email}: Returning ${orders.length} logistics-visible orders`);
     }
 
     console.log(`📊 Found ${orders.length} orders for user ${req.user?.email || 'anonymous'}`);
@@ -834,9 +851,9 @@ exports.getOrderById = async (req, res) => {
       (await isLogisticManagerRequest(req, orderCompanyId))
     ) {
       const st = String(order.status || "").toLowerCase();
-      if (st !== "approved") {
+      if (![ "approved", ...LOGISTICS_STATUSES ].includes(st)) {
         return res.status(403).json({
-          message: "Logistics can only view orders that are in approved status.",
+          message: `Logistics can only view orders that are in: ${["approved", ...LOGISTICS_STATUSES].join(", ")} status.`,
         });
       }
     }
@@ -983,6 +1000,21 @@ exports.updateOrderStatus = async (req, res) => {
       }
     }
 
+    if (status && (await isCategoryManagerRequest(req, companyId))) {
+      const oldS = String(oldOrder.status || "").toLowerCase();
+      const newS = String(status).toLowerCase();
+      if (oldS !== "pending") {
+        return res.status(403).json({
+          message: "Managers can only update orders that are in pending status.",
+        });
+      }
+      if (!MANAGER_STATUSES.includes(newS)) {
+        return res.status(400).json({
+          message: `Managers can only set status to: ${MANAGER_STATUSES.join(", ")}.`,
+        });
+      }
+    }
+
     // Prepare update data
     const updateData = {};
     if (status) {
@@ -1049,7 +1081,7 @@ exports.updateOrderStatus = async (req, res) => {
 // Update order (general update)
 exports.updateOrder = async (req, res) => {
   try {
-    const { status, notes, subtotal, tax, total, attachment } = req.body;
+    const { status, notes, subtotal, tax, total, attachment, items } = req.body;
     const companyId = req.headers['x-company-id'] || req.user?.company_id || "RESSICHEM";
     
     const oldOrder = await Order.findOne({ _id: req.params.id, company_id: companyId });
@@ -1085,12 +1117,115 @@ exports.updateOrder = async (req, res) => {
           });
         }
       }
+      if (await isCategoryManagerRequest(req, companyId)) {
+        const oldS = String(oldOrder.status || "").toLowerCase();
+        if (oldS !== "pending") {
+          return res.status(403).json({
+            message: "Managers can only update orders that are in pending status.",
+          });
+        }
+        if (!MANAGER_STATUSES.includes(normalizedStatus)) {
+          return res.status(400).json({
+            message: `Managers can only set status to: ${MANAGER_STATUSES.join(", ")}.`,
+          });
+        }
+      }
       updateData.status = normalizedStatus;
     }
     if (notes !== undefined) updateData.notes = notes;
-    if (subtotal !== undefined) updateData.subtotal = subtotal;
-    if (tax !== undefined) updateData.tax = tax;
-    if (total !== undefined) updateData.total = total;
+    if (Array.isArray(items)) {
+      const normalizedItems = items.map((item) => {
+        const quantity = Math.max(1, Number(item?.quantity || 1));
+        const unitPrice = Math.max(0, Number(item?.unitPrice || 0));
+        const productId = item?.product?._id || item?.product;
+        return {
+          product: productId,
+          quantity,
+          unitPrice,
+          total: quantity * unitPrice,
+          tdsLink: item?.tdsLink || "",
+        };
+      });
+
+      const hasInvalidItem = normalizedItems.some((item) => !item.product);
+      if (hasInvalidItem) {
+        return res.status(400).json({ message: "Each order item must include a valid product id." });
+      }
+
+      // Strict item-level RBAC for category managers:
+      // they may edit only item rows assigned to them via OrderItemApproval.
+      if (await isCategoryManagerRequest(req, companyId)) {
+        const fullUser = req.user?.user_id
+          ? await User.findOne({
+              user_id: req.user.user_id,
+              company_id: companyId,
+            }).select("_id")
+          : null;
+
+        if (!fullUser?._id) {
+          return res.status(403).json({ message: "Manager profile not found for item-level edit authorization." });
+        }
+
+        const editableRows = await OrderItemApproval.find({
+          orderId: oldOrder._id,
+          assignedManager: fullUser._id,
+          company_id: companyId,
+        })
+          .select("itemIndex")
+          .lean();
+        const editableIndices = new Set(editableRows.map((row) => Number(row.itemIndex)));
+
+        if ((oldOrder.items || []).length !== normalizedItems.length) {
+          return res.status(403).json({
+            message: "Managers cannot add/remove order items; only assigned item quantities/prices can be edited.",
+          });
+        }
+
+        for (let index = 0; index < normalizedItems.length; index++) {
+          const nextItem = normalizedItems[index];
+          const oldItem = oldOrder.items[index];
+          if (!oldItem) {
+            return res.status(403).json({ message: "Invalid item update payload." });
+          }
+
+          const oldProductId = String(oldItem.product || "");
+          const nextProductId = String(nextItem.product || "");
+          if (oldProductId !== nextProductId) {
+            return res.status(403).json({
+              message: "Managers cannot change product mapping for order items.",
+            });
+          }
+
+          const oldQuantity = Number(oldItem.quantity || 0);
+          const oldUnitPrice = Number(oldItem.unitPrice || 0);
+          const changedByManager =
+            oldQuantity !== Number(nextItem.quantity) ||
+            oldUnitPrice !== Number(nextItem.unitPrice);
+
+          if (changedByManager && !editableIndices.has(index)) {
+            return res.status(403).json({
+              message: `You can edit only your assigned items. Item ${index + 1} is locked.`,
+            });
+          }
+        }
+      }
+
+      updateData.items = normalizedItems;
+      const recalculatedSubtotal = normalizedItems.reduce(
+        (sum, item) => sum + Number(item.total || 0),
+        0
+      );
+      updateData.subtotal = recalculatedSubtotal;
+      updateData.tax = 0; // Tax is removed from this workflow.
+      updateData.total = recalculatedSubtotal;
+      const existingDiscount = Number(oldOrder.totalDiscount || 0);
+      updateData.totalDiscount = existingDiscount;
+      updateData.finalTotal = Math.max(0, recalculatedSubtotal - existingDiscount);
+    } else {
+      if (subtotal !== undefined) updateData.subtotal = subtotal;
+      if (tax !== undefined) updateData.tax = tax;
+      if (total !== undefined) updateData.total = total;
+    }
     if (attachment !== undefined) {
       if (attachment === null) {
         updateData.attachment = null;

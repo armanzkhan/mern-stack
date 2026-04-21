@@ -176,6 +176,58 @@ function OrdersPageContent() {
     !isCompanyAdminUser &&
     !isSuperAdminUser &&
     (isLogisticManagerRoleDetected || isLogisticManagerFallback);
+  const managerCanChangeOrderStatus = (order: Order) => {
+    if (user?.isCustomer) return false;
+    const s = String(order?.status || "").toLowerCase();
+    if (isCategoryManager && s === "approved") return false;
+    if (isCategoryManager) return ["pending", "processing"].includes(s);
+    // Logistics: only approved orders can be moved to dispatch/hold; then locked (matches backend).
+    if (isLogisticManager) return s === "approved";
+    return true;
+  };
+  const managerCanEditOrder = (order: Order) => {
+    if (user?.isCustomer) return false;
+    const s = String(order?.status || "").toLowerCase();
+    if (isCategoryManager && s === "approved") return false;
+    if (isCategoryManager) return ["pending", "processing"].includes(s);
+    if (isLogisticManager) return s === "approved";
+    return true;
+  };
+  const normalizeManagerCategory = (category: string): string =>
+    String(category || "")
+      .toLowerCase()
+      .trim()
+      .replace(/\s*&\s*/g, " and ")
+      .replace(/\bspeciality\b/g, "specialty")
+      .replace(/\s+/g, " ");
+  const managerAssignedCategoryStrings: string[] = Array.isArray((user as any)?.managerProfile?.assignedCategories)
+    ? (user as any).managerProfile.assignedCategories
+        .map((cat: unknown) =>
+          typeof cat === "string"
+            ? cat
+            : (cat as { category?: string; name?: string })?.category ||
+              (cat as { name?: string })?.name ||
+              ""
+        )
+        .filter(Boolean)
+    : [];
+  const canCurrentUserEditOrderItem = (item: OrderItem): boolean => {
+    if (!isCategoryManager) return true;
+    const productCategoryRaw =
+      typeof item.product?.category === "string"
+        ? item.product.category
+        : item.product?.category?.mainCategory || "";
+    const normalizedProductCategory = normalizeManagerCategory(String(productCategoryRaw || ""));
+    if (!normalizedProductCategory) return false;
+    return managerAssignedCategoryStrings
+      .map((cat) => normalizeManagerCategory(cat))
+      .some(
+        (managerCat) =>
+          normalizedProductCategory === managerCat ||
+          normalizedProductCategory.includes(managerCat) ||
+          managerCat.includes(normalizedProductCategory)
+      );
+  };
 
   // Fetch invoices for orders
   const fetchInvoicesForOrders = async (orderNumbers: string[]) => {
@@ -228,8 +280,8 @@ function OrdersPageContent() {
         // Customers: fetch their own orders with a high limit
         apiEndpoint = '/api/customers/orders?limit=1000&page=1';
       } else if (isLogisticManager) {
-        // Logistics: only approved orders are visible/actionable.
-        apiEndpoint = '/api/orders?status=approved';
+        // Logistics: keep approved actionable and retain dispatch/hold history for tracking.
+        apiEndpoint = '/api/orders';
       } else if (user?.isManager && !isCompanyAdminUser && !isSuperAdminUser) {
         // Managers: fetch only orders for their assigned categories
         apiEndpoint = '/api/managers/orders?limit=1000&page=1';
@@ -459,6 +511,9 @@ function OrdersPageContent() {
           }));
         })
       : filteredOrders.map((order) => ({ order, rowKey: order._id }));
+  const logisticsApprovedCount = displayedOrderRows.filter(({ order }) => order.status === 'approved').length;
+  const logisticsDispatchCount = displayedOrderRows.filter(({ order }) => order.status === 'dispatch').length;
+  const logisticsHoldCount = displayedOrderRows.filter(({ order }) => order.status === 'hold').length;
 
   const uniqueOrdersCount = filteredOrders.length;
   const expandedRowsCount = displayedOrderRows.length;
@@ -534,11 +589,40 @@ function OrdersPageContent() {
       status: safeStatus,
       notes: order.notes || '',
       attachment: order.attachment || null,
+      items: (order.items || []).map((item) => ({
+        ...item,
+        quantity: Number(item.quantity || 1),
+        unitPrice: Number(item.unitPrice || item.product?.price || 0),
+        total: Number(item.total || (Number(item.quantity || 1) * Number(item.unitPrice || item.product?.price || 0))),
+      })),
       total: order.total,
       subtotal: order.subtotal,
       tax: order.tax
     });
     setShowEditModal(true);
+  };
+
+  const updateEditingItem = (
+    itemIndex: number,
+    field: "quantity" | "unitPrice",
+    rawValue: string
+  ) => {
+    const numericValue = Number(rawValue);
+    setEditingOrder((prev) => {
+      const existingItems = Array.isArray(prev.items) ? [...prev.items] : [];
+      if (!existingItems[itemIndex]) return prev;
+
+      const item = { ...existingItems[itemIndex] };
+      if (field === "quantity") {
+        item.quantity = Number.isFinite(numericValue) ? Math.max(1, Math.round(numericValue)) : 1;
+      } else {
+        item.unitPrice = Number.isFinite(numericValue) ? Math.max(0, numericValue) : 0;
+      }
+      item.total = Number(item.quantity || 0) * Number(item.unitPrice || 0);
+      existingItems[itemIndex] = item;
+
+      return { ...prev, items: existingItems };
+    });
   };
 
   const fileToDataUrl = (file: File): Promise<string> =>
@@ -611,6 +695,23 @@ function OrdersPageContent() {
 
     try {
       const payload: Record<string, any> = { ...editingOrder };
+      if (Array.isArray(editingOrder.items)) {
+        payload.items = editingOrder.items.map((item) => {
+          const productId =
+            typeof item.product === "string"
+              ? item.product
+              : (item.product as { _id?: string })?._id;
+          const quantity = Math.max(1, Number(item.quantity || 1));
+          const unitPrice = Math.max(0, Number(item.unitPrice || 0));
+          return {
+            product: productId,
+            quantity,
+            unitPrice,
+            total: quantity * unitPrice,
+            tdsLink: (item as { tdsLink?: string })?.tdsLink || "",
+          };
+        });
+      }
       if (editAttachmentFile) {
         const maxAttachmentSizeBytes = 10 * 1024 * 1024; // 10MB
         const originalType = String(editAttachmentFile.type || "").toLowerCase();
@@ -930,11 +1031,17 @@ function OrdersPageContent() {
             <div className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-lg shadow-lg border border-white/20 dark:border-gray-700/20 p-4 hover:shadow-xl transition-all duration-300">
               <div className="flex items-center justify-between">
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-blue-600 dark:text-blue-400">Pending</p>
-                  <p className="text-2xl font-bold text-blue-900 dark:text-blue-100 mt-1">
-                    {displayedOrderRows.filter(({ order }) => order.status === 'pending').length}
+                  <p className="text-sm font-medium text-blue-600 dark:text-blue-400">
+                    {isLogisticManager ? 'Approved' : 'Pending'}
                   </p>
-                  <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">Awaiting processing</p>
+                  <p className="text-2xl font-bold text-blue-900 dark:text-blue-100 mt-1">
+                    {isLogisticManager
+                      ? logisticsApprovedCount
+                      : displayedOrderRows.filter(({ order }) => order.status === 'pending').length}
+                  </p>
+                  <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                    {isLogisticManager ? 'Ready for logistics action' : 'Awaiting processing'}
+                  </p>
                 </div>
                 <div className="w-10 h-10 bg-blue-900 rounded-lg flex items-center justify-center shadow-lg flex-shrink-0">
                   <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -947,11 +1054,17 @@ function OrdersPageContent() {
             <div className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-lg shadow-lg border border-white/20 dark:border-gray-700/20 p-4 hover:shadow-xl transition-all duration-300">
               <div className="flex items-center justify-between">
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-blue-600 dark:text-blue-400">Approved</p>
-                  <p className="text-2xl font-bold text-blue-900 dark:text-blue-100 mt-1">
-                    {displayedOrderRows.filter(({ order }) => order.status === 'approved').length}
+                  <p className="text-sm font-medium text-blue-600 dark:text-blue-400">
+                    {isLogisticManager ? 'Dispatch' : 'Approved'}
                   </p>
-                  <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">Approved orders</p>
+                  <p className="text-2xl font-bold text-blue-900 dark:text-blue-100 mt-1">
+                    {isLogisticManager
+                      ? logisticsDispatchCount
+                      : displayedOrderRows.filter(({ order }) => order.status === 'approved').length}
+                  </p>
+                  <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                    {isLogisticManager ? 'Moved to dispatch' : 'Approved orders'}
+                  </p>
                 </div>
                 <div className="w-10 h-10 bg-blue-900 rounded-lg flex items-center justify-center shadow-lg flex-shrink-0">
                   <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -964,11 +1077,17 @@ function OrdersPageContent() {
             <div className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-lg shadow-lg border border-white/20 dark:border-gray-700/20 p-4 hover:shadow-xl transition-all duration-300">
               <div className="flex items-center justify-between">
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-blue-600 dark:text-blue-400">Completed</p>
-                  <p className="text-2xl font-bold text-blue-900 dark:text-blue-100 mt-1">
-                    {displayedOrderRows.filter(({ order }) => order.status === 'completed').length}
+                  <p className="text-sm font-medium text-blue-600 dark:text-blue-400">
+                    {isLogisticManager ? 'Hold' : 'Completed'}
                   </p>
-                  <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">Successfully delivered</p>
+                  <p className="text-2xl font-bold text-blue-900 dark:text-blue-100 mt-1">
+                    {isLogisticManager
+                      ? logisticsHoldCount
+                      : displayedOrderRows.filter(({ order }) => order.status === 'completed').length}
+                  </p>
+                  <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                    {isLogisticManager ? 'Currently on hold' : 'Successfully delivered'}
+                  </p>
                 </div>
                 <div className="w-10 h-10 bg-blue-900 rounded-lg flex items-center justify-center shadow-lg flex-shrink-0">
                   <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1228,34 +1347,44 @@ function OrdersPageContent() {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
                       </svg>
                       <span className="text-sm text-gray-600 dark:text-gray-400">
-                        {order.finalTotal ? (
-                          <div className="space-y-1">
-                            <div className="text-sm text-gray-500 line-through">PKR {(order.total || 0).toLocaleString()}</div>
-                            <div className="font-medium text-green-600 dark:text-green-400">PKR {(order.finalTotal || 0).toLocaleString()}</div>
-                            {order.totalDiscount && order.totalDiscount > 0 && (
-                              <div className="text-xs text-orange-600 dark:text-orange-400">
-                                -PKR {(order.totalDiscount || 0).toLocaleString()} discount
+                        {(() => {
+                          const total = Number(order.total || 0);
+                          const finalTotal = Number(order.finalTotal || 0);
+                          const totalDiscount = Number(order.totalDiscount || 0);
+                          const hasAppliedDiscount =
+                            totalDiscount > 0 && finalTotal > 0 && total > 0 && finalTotal < total;
+
+                          if (hasAppliedDiscount) {
+                            return (
+                              <div className="space-y-1">
+                                <div className="text-sm text-gray-500 line-through">PKR {total.toLocaleString()}</div>
+                                <div className="font-medium text-green-600 dark:text-green-400">PKR {finalTotal.toLocaleString()}</div>
+                                <div className="text-xs text-orange-600 dark:text-orange-400">
+                                  -PKR {totalDiscount.toLocaleString()} discount
+                                </div>
                               </div>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="font-medium text-blue-900 dark:text-white">
-                            PKR {(() => {
-                              // Always show subtotal (amount without tax)
-                              // For old orders, calculate subtotal from total if tax exists
-                              if (order.subtotal && order.subtotal > 0) {
-                                return order.subtotal.toLocaleString();
-                              } else if (order.tax && order.tax > 0 && order.total) {
-                                // Calculate subtotal from total - tax for old orders
-                                return (order.total - order.tax).toLocaleString();
-                              } else if (order.total) {
-                                // If no tax, total equals subtotal
-                                return order.total.toLocaleString();
-                              }
-                              return '0';
-                            })()}
-                          </span>
-                        )}
+                            );
+                          }
+
+                          return (
+                            <span className="font-medium text-blue-900 dark:text-white">
+                              PKR {(() => {
+                                // Always show subtotal (amount without tax)
+                                // For old orders, calculate subtotal from total if tax exists
+                                if (order.subtotal && order.subtotal > 0) {
+                                  return order.subtotal.toLocaleString();
+                                } else if (order.tax && order.tax > 0 && order.total) {
+                                  // Calculate subtotal from total - tax for old orders
+                                  return (order.total - order.tax).toLocaleString();
+                                } else if (order.total) {
+                                  // If no tax, total equals subtotal
+                                  return order.total.toLocaleString();
+                                }
+                                return '0';
+                              })()}
+                            </span>
+                          );
+                        })()}
                       </span>
                     </div>
                     
@@ -1271,7 +1400,21 @@ function OrdersPageContent() {
 
                   <div className="mt-4 flex flex-col gap-3">
                     {/* Status Change - Only for non-customers */}
-                    {!user?.isCustomer && (
+                    {isCategoryManager && String(order?.status || "").toLowerCase() === "approved" && (
+                      <div className="flex justify-center">
+                        <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${getStatusColor(order.status)}`}>
+                          Approved (view only)
+                        </span>
+                      </div>
+                    )}
+                    {isLogisticManager && !managerCanChangeOrderStatus(order) && ["dispatch", "hold"].includes(String(order?.status || "").toLowerCase()) && (
+                      <div className="flex justify-center">
+                        <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${getStatusColor(order.status)}`}>
+                          {String(order.status).charAt(0).toUpperCase() + String(order.status).slice(1)} (locked)
+                        </span>
+                      </div>
+                    )}
+                    {managerCanChangeOrderStatus(order) && (
                       <div className="flex justify-center">
                         <PermissionGate permission="orders.update">
                           <select
@@ -1414,6 +1557,7 @@ function OrdersPageContent() {
                       {!user?.isCustomer && (
                         <>
                           <PermissionGate permission="orders.update">
+                            {managerCanEditOrder(order) && (
                             <button 
                               onClick={() => handleEditOrder(order)}
                               className="p-2 rounded-lg bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 hover:bg-green-200 dark:hover:bg-green-900/50 transition-colors"
@@ -1423,17 +1567,20 @@ function OrdersPageContent() {
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                               </svg>
                             </button>
+                            )}
                           </PermissionGate>
                           <PermissionGate permission="orders.update">
-                            <button 
-                              onClick={() => openDiscountModal(order)}
-                              className="p-2 rounded-lg bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 hover:bg-orange-200 dark:hover:bg-orange-900/50 transition-colors"
-                              title="Apply Discount"
-                            >
-                              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
-                              </svg>
-                            </button>
+                            {managerCanEditOrder(order) && (
+                              <button 
+                                onClick={() => openDiscountModal(order)}
+                                className="p-2 rounded-lg bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 hover:bg-orange-200 dark:hover:bg-orange-900/50 transition-colors"
+                                title="Apply Discount"
+                              >
+                                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
+                                </svg>
+                              </button>
+                            )}
                           </PermissionGate>
                           <PermissionGate permission="invoices.create">
                             <button 
@@ -1579,9 +1726,6 @@ function OrdersPageContent() {
                       }
                       return '0';
                     })()}</p>
-                    {selectedOrder?.tax && selectedOrder.tax > 0 && (
-                      <p className="text-sm text-gray-500 line-through"><strong>Tax (10%):</strong> PKR {selectedOrder.tax.toLocaleString()} (removed)</p>
-                    )}
                     <p className="text-sm"><strong>Date:</strong> {selectedOrder?.orderDate ? new Date(selectedOrder.orderDate).toLocaleDateString() : 'N/A'}</p>
                     {selectedOrder?.notes && <p className="text-sm"><strong>Notes:</strong> {selectedOrder.notes}</p>}
                     {selectedOrder?.attachment?.dataUrl && (
@@ -1788,6 +1932,7 @@ function OrdersPageContent() {
                     value={editingOrder.status || ''}
                     onChange={(e) => setEditingOrder({...editingOrder, status: e.target.value})}
                     className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-gray-900 focus:border-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-900/50 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                    disabled={isCategoryManager && String(selectedOrder?.status || "").toLowerCase() === "approved"}
                     required
                   >
                     {isCategoryManager ? (
@@ -1838,6 +1983,69 @@ function OrdersPageContent() {
                     placeholder="Add notes about this order..."
                   />
                 </div>
+
+                {Array.isArray(editingOrder.items) && editingOrder.items.length > 0 && (
+                  <div>
+                    <label className="block text-sm font-medium text-blue-900 dark:text-white mb-2">
+                      Order Items (Editable Quantity & Unit Price)
+                    </label>
+                    <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="bg-gray-100 dark:bg-gray-700">
+                            <th className="px-3 py-2 text-left">Product</th>
+                            <th className="px-3 py-2 text-left">Quantity</th>
+                            <th className="px-3 py-2 text-left">Unit Price (PKR)</th>
+                            <th className="px-3 py-2 text-left">Total</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {editingOrder.items.map((item, index) => (
+                            <tr
+                              key={`${selectedOrder?._id}-edit-item-${index}-${typeof item.product === "string" ? item.product : item.product?._id || "unknown"}`}
+                              className="border-b border-gray-200 dark:border-gray-600"
+                            >
+                              <td className="px-3 py-2">
+                                {typeof item.product === "string" ? item.product : item.product?.name || "N/A"}
+                              </td>
+                              <td className="px-3 py-2">
+                                <input
+                                  type="number"
+                                  min={1}
+                                  step={1}
+                                  value={Number(item.quantity || 1)}
+                                  onChange={(e) => updateEditingItem(index, "quantity", e.target.value)}
+                                  disabled={!canCurrentUserEditOrderItem(item)}
+                                  className="w-24 rounded-lg border border-gray-300 bg-white px-2 py-1 text-gray-900 focus:border-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-900/50 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                                />
+                              </td>
+                              <td className="px-3 py-2">
+                                <input
+                                  type="number"
+                                  min={0}
+                                  step={0.01}
+                                  value={Number(item.unitPrice || 0)}
+                                  onChange={(e) => updateEditingItem(index, "unitPrice", e.target.value)}
+                                  disabled={!canCurrentUserEditOrderItem(item)}
+                                  className="w-32 rounded-lg border border-gray-300 bg-white px-2 py-1 text-gray-900 focus:border-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-900/50 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                                />
+                              </td>
+                              <td className="px-3 py-2 font-medium">
+                                PKR {(Number(item.quantity || 0) * Number(item.unitPrice || 0)).toLocaleString()}
+                                {!canCurrentUserEditOrderItem(item) && (
+                                  <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">(locked)</span>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                      Updated totals will be recalculated automatically when you save.
+                    </p>
+                  </div>
+                )}
 
                 <div>
                   <label className="block text-sm font-medium text-blue-900 dark:text-white mb-2">

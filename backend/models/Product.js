@@ -27,6 +27,14 @@ const ProductSchema = new mongoose.Schema({
   displayOrder: { type: Number, default: 0 }, // For sorting products
   // Technical documentation
   tdsLink: { type: String }, // TDS (Technical Data Sheet) document link
+  // Latest price-change snapshot for quick list display/audit context
+  lastPriceChange: {
+    previousPrice: { type: Number },
+    newPrice: { type: Number },
+    changedByName: { type: String },
+    changedByEmail: { type: String },
+    changedAt: { type: Date },
+  },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
   updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
 }, {

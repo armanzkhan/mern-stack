@@ -5,7 +5,8 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_BACKEND_URL || process.env.NEXT_PUB
 export async function GET(request: NextRequest) {
   try {
     const authHeader = request.headers.get("authorization");
-    const token = authHeader?.replace("Bearer ", "");
+    const { searchParams } = new URL(request.url);
+    const query = searchParams.toString();
 
     const headers: HeadersInit = {
       'Content-Type': 'application/json',
@@ -15,7 +16,7 @@ export async function GET(request: NextRequest) {
       headers['Authorization'] = authHeader;
     }
 
-    const response = await fetch(`${API_BASE_URL}/api/product-categories`, {
+    const response = await fetch(`${API_BASE_URL}/api/product-categories${query ? `?${query}` : ""}`, {
       method: 'GET',
       headers,
     });
@@ -41,7 +42,6 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const authHeader = request.headers.get("authorization");
-    const token = authHeader?.replace("Bearer ", "");
     const body = await request.json();
 
     const headers: HeadersInit = {

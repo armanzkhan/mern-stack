@@ -30,17 +30,13 @@ interface Manager {
 }
 
 export default function CategoriesPage() {
-  // Allowed categories for manager assignment
-  const allowedCategories = [
-    'Building Care & Maintenance',
-    'Concrete Admixtures',
-    'Decorative Concrete',
-    'Dry Mix Mortars / Premix Plasters',
-    'Epoxy Adhesives and Coatings',
-    'Epoxy Floorings & Coatings',
-    'Specialty Products',
-    'Tiling and Grouting Materials'
-  ];
+  const normalizeCategoryKey = (value: string) =>
+    String(value || "")
+      .toLowerCase()
+      .replace(/&/g, "and")
+      .replace(/speciality/g, "specialty")
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim();
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [managers, setManagers] = useState<Manager[]>([]);
@@ -77,10 +73,15 @@ export default function CategoriesPage() {
         headers: getAuthHeaders() 
       });
       console.log('📡 Managers API response:', managersRes.status);
+      const productsRes = await fetch('/api/products?limit=2000', {
+        headers: getAuthHeaders()
+      });
+      console.log('📡 Products API response:', productsRes.status);
 
       console.log('📡 API Responses:');
       console.log('  Categories:', categoriesRes.status, categoriesRes.statusText);
       console.log('  Managers:', managersRes.status, managersRes.statusText);
+      console.log('  Products:', productsRes.status, productsRes.statusText);
 
       if (categoriesRes.ok) {
         const categoriesData = await categoriesRes.json();
@@ -89,19 +90,41 @@ export default function CategoriesPage() {
         console.log('✅ Categories type:', typeof categoriesData);
         console.log('✅ Categories is array:', Array.isArray(categoriesData));
         
-        // Filter to only allowed categories when setting state
-        const filteredData = categoriesData.filter((cat: any) => {
-          const categoryName = (cat.name || cat.mainCategory || '').trim();
-          const isAllowed = categoryName && allowedCategories.includes(categoryName);
-          if (!isAllowed && categoryName) {
-            console.log('❌ Category not allowed:', categoryName);
-          }
-          return isAllowed;
+        const productsData = productsRes.ok ? await productsRes.json() : [];
+        const products = Array.isArray(productsData) ? productsData : productsData.products || [];
+        const activeMainCategoriesWithProducts = new Set(
+          products
+            .map((product: any) => normalizeCategoryKey(String(product?.category?.mainCategory || '').trim()))
+            .filter(Boolean)
+        );
+
+        // Show active main categories that currently have products.
+        const filteredData: Category[] = (Array.isArray(categoriesData) ? categoriesData : []).filter((cat: any) => {
+          const categoryName = String(cat?.name || cat?.mainCategory || '').trim();
+          const isMainLevel = Number(cat?.level) === 1 || !cat?.parent;
+          const isActive = cat?.isActive !== false;
+          return (
+            Boolean(categoryName) &&
+            isMainLevel &&
+            isActive &&
+            activeMainCategoriesWithProducts.has(normalizeCategoryKey(categoryName))
+          );
         });
-        console.log('✅ Filtered categories count:', filteredData.length);
-        console.log('✅ Filtered category names:', filteredData.map((c: any) => c.name || c.mainCategory));
-        // Debug: Check subcategories for all filtered categories
-        filteredData.forEach((cat: any, index: number) => {
+
+        const deduped: Category[] = Array.from(
+          filteredData.reduce((acc: Map<string, Category>, cat: Category) => {
+            const key = String((cat as any)?.name || cat?.mainCategory || '').trim().toLowerCase();
+            if (!acc.has(key)) acc.set(key, cat);
+            return acc;
+          }, new Map<string, Category>()).values()
+        ).sort((a: Category, b: Category) =>
+          String((a as any)?.name || a?.mainCategory || '').localeCompare(String((b as any)?.name || b?.mainCategory || ''))
+        );
+
+        console.log('✅ Main active categories with products count:', deduped.length);
+        console.log('✅ Category names:', deduped.map((c: any) => c.name || c.mainCategory));
+        // Debug: Check subcategories for all categories
+        deduped.forEach((cat: any, index: number) => {
           const catName = cat.name || cat.mainCategory;
           console.log(`✅ Category ${index + 1} (${catName}):`, {
             subCategories: cat.subCategories,
@@ -111,7 +134,7 @@ export default function CategoriesPage() {
             fullCategory: cat
           });
         });
-        setCategories(filteredData);
+        setCategories(deduped);
       } else {
         console.error('❌ Categories API failed with status:', categoriesRes.status);
         console.error('❌ Categories API status text:', categoriesRes.statusText);
@@ -236,15 +259,14 @@ export default function CategoriesPage() {
     }
   };
 
-  // Filter categories - only show allowed categories
+  // Filter categories
   const filteredCategories = categories.filter(category => {
     if (!category) return false;
     
     // Get category name
     const categoryName = (category as any).name || category.mainCategory;
     
-    // Only include allowed categories
-    if (!categoryName || !allowedCategories.includes(categoryName)) {
+    if (!categoryName) {
       return false;
     }
     
@@ -265,7 +287,7 @@ export default function CategoriesPage() {
     return false;
   });
 
-  // Get only allowed main categories (not subcategories) for selection
+  // Get only main categories for manager assignment selection
   const allCategories = categories
     .map(category => {
       // Handle different category structures
@@ -278,10 +300,7 @@ export default function CategoriesPage() {
       }
       return null;
     })
-    .filter((categoryName): categoryName is string => {
-      // Only include allowed main categories (case-sensitive exact match)
-      return categoryName !== null && categoryName !== '' && allowedCategories.includes(categoryName);
-    });
+    .filter((categoryName): categoryName is string => categoryName !== null && categoryName !== '');
 
   // Debug logging
   console.log('Categories count:', categories.length);

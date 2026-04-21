@@ -1,6 +1,23 @@
 const Product = require("../models/Product");
 const ProductCategory = require("../models/ProductCategory");
+const ProductPriceHistory = require("../models/ProductPriceHistory");
 const notificationTriggerService = require("../services/notificationTriggerService");
+
+/** Same idea as frontend `getCategoryVariants`: DB may store "and" vs "&" differently. */
+function mainCategoryFilterVariants(mainCategory) {
+  const raw = String(mainCategory || "")
+    .trim()
+    .replace(/\s+/g, " ");
+  if (!raw) return [];
+  const variants = new Set([raw]);
+  if (/\band\b/i.test(raw)) {
+    variants.add(raw.replace(/\band\b/gi, "&"));
+  }
+  if (raw.includes("&")) {
+    variants.add(raw.replace(/\s*&\s*/g, " and "));
+  }
+  return Array.from(variants).filter(Boolean);
+}
 
 // Create product
 exports.createProduct = async (req, res) => {
@@ -59,7 +76,14 @@ exports.getProducts = async (req, res) => {
     }
 
     if (mainCategory) {
-      filter['category.mainCategory'] = mainCategory;
+      const variants = mainCategoryFilterVariants(mainCategory);
+      if (variants.length === 0) {
+        filter["category.mainCategory"] = mainCategory;
+      } else if (variants.length === 1) {
+        filter["category.mainCategory"] = variants[0];
+      } else {
+        filter["category.mainCategory"] = { $in: variants };
+      }
     }
 
     if (subCategory) {
@@ -95,8 +119,46 @@ exports.getProducts = async (req, res) => {
 
     const total = await Product.countDocuments(filter);
 
+    // Backward-compatible hydration:
+    // if a product doesn't yet have `lastPriceChange`, read the latest row from history
+    // so UI can show previous/new price without requiring a new edit.
+    const productsWithPriceInfo = products.map((p) => p.toObject());
+    const missingSnapshotIds = productsWithPriceInfo
+      .filter((p) => !p.lastPriceChange || p.lastPriceChange.newPrice === undefined)
+      .map((p) => p._id);
+
+    if (missingSnapshotIds.length > 0) {
+      const historyRows = await ProductPriceHistory.find({
+        product: { $in: missingSnapshotIds },
+      })
+        .sort({ createdAt: -1 })
+        .select("product previousPrice newPrice changedByName changedByEmail createdAt")
+        .lean();
+
+      const latestByProduct = new Map();
+      for (const row of historyRows) {
+        const key = String(row.product);
+        if (!latestByProduct.has(key)) {
+          latestByProduct.set(key, row);
+        }
+      }
+
+      for (const product of productsWithPriceInfo) {
+        if (product.lastPriceChange && product.lastPriceChange.newPrice !== undefined) continue;
+        const row = latestByProduct.get(String(product._id));
+        if (!row) continue;
+        product.lastPriceChange = {
+          previousPrice: row.previousPrice,
+          newPrice: row.newPrice,
+          changedByName: row.changedByName,
+          changedByEmail: row.changedByEmail,
+          changedAt: row.createdAt,
+        };
+      }
+    }
+
     res.json({
-      products,
+      products: productsWithPriceInfo,
       pagination: {
         currentPage: parseInt(page),
         totalPages: Math.ceil(total / parseInt(limit)),
@@ -136,12 +198,51 @@ exports.updateProduct = async (req, res) => {
       req.body.updatedBy = req.user.id;
     }
 
+    const normalizedIncomingPrice =
+      req.body.price !== undefined && req.body.price !== null
+        ? Number(req.body.price)
+        : undefined;
+    const hasPriceChanged =
+      Number.isFinite(normalizedIncomingPrice) &&
+      Number(oldProduct.price) !== normalizedIncomingPrice;
+    const changedByName =
+      [req.user?.firstName, req.user?.lastName].filter(Boolean).join(" ").trim() ||
+      req.user?.name ||
+      req.user?.email ||
+      "System";
+    const changedByEmail = req.user?.email || "system@ressichem.com";
+
+    if (hasPriceChanged) {
+      req.body.lastPriceChange = {
+        previousPrice: Number(oldProduct.price || 0),
+        newPrice: normalizedIncomingPrice,
+        changedByName,
+        changedByEmail,
+        changedAt: new Date(),
+      };
+    }
+
     const product = await Product.findByIdAndUpdate(req.params.id, req.body, {
       new: true,
     }).populate('createdBy', 'name email')
       .populate('updatedBy', 'name email');
     
     if (!product) return res.status(404).json({ message: "Product not found" });
+
+    if (hasPriceChanged) {
+      const changedById = req.user?._id || req.user?.id || null;
+
+      await ProductPriceHistory.create({
+        product: product._id,
+        company_id: product.company_id || req.user?.company_id || "RESSICHEM",
+        previousPrice: Number(oldProduct.price || 0),
+        newPrice: normalizedIncomingPrice,
+        changedBy: changedById,
+        changedByName,
+        changedByEmail,
+        reason: req.body?.priceChangeReason || "",
+      });
+    }
     
     // Check for stock changes and trigger notifications
     try {
@@ -176,6 +277,42 @@ exports.updateProduct = async (req, res) => {
     res.json(product);
   } catch (err) {
     res.status(500).json({ message: "Error updating product", error: err.message });
+  }
+};
+
+// Get price history for a product
+exports.getProductPriceHistory = async (req, res) => {
+  try {
+    const product = await Product.findById(req.params.id).select("company_id");
+    if (!product) {
+      return res.status(404).json({ message: "Product not found" });
+    }
+
+    const requesterCompanyId = String(
+      req.headers["x-company-id"] || req.user?.company_id || ""
+    ).trim();
+    const productCompanyId = String(product.company_id || "").trim();
+    const normalizedRequesterCompanyId = requesterCompanyId.toLowerCase();
+    const normalizedProductCompanyId = productCompanyId.toLowerCase();
+
+    if (
+      requesterCompanyId &&
+      productCompanyId &&
+      normalizedRequesterCompanyId !== normalizedProductCompanyId
+    ) {
+      return res.status(403).json({ message: "You do not have access to this product history" });
+    }
+
+    const history = await ProductPriceHistory.find({
+      product: req.params.id,
+    })
+      .sort({ createdAt: -1 })
+      .limit(50)
+      .populate("changedBy", "firstName lastName email");
+
+    res.json({ history });
+  } catch (err) {
+    res.status(500).json({ message: "Error fetching product price history", error: err.message });
   }
 };
 
@@ -254,6 +391,81 @@ exports.getCategories = async (req, res) => {
   } catch (err) {
     console.error('❌ Error fetching categories:', err);
     res.status(500).json({ message: "Error fetching categories", error: err.message });
+  }
+};
+
+// Create product category
+exports.createCategory = async (req, res) => {
+  try {
+    const rawName = String(req.body?.name || "").trim();
+    const level = Number(req.body?.level || 1);
+    const parentId = req.body?.parent || null;
+
+    if (!rawName) {
+      return res.status(400).json({ message: "Category name is required" });
+    }
+
+    if (![1, 2, 3].includes(level)) {
+      return res.status(400).json({ message: "Category level must be 1, 2, or 3" });
+    }
+
+    let parentDoc = null;
+    if (level > 1) {
+      if (!parentId) {
+        return res.status(400).json({ message: "Parent category is required for subcategories" });
+      }
+      parentDoc = await ProductCategory.findById(parentId);
+      if (!parentDoc || !parentDoc.isActive) {
+        return res.status(404).json({ message: "Parent category not found" });
+      }
+      if (parentDoc.level !== level - 1) {
+        return res.status(400).json({
+          message: `Parent category level must be ${level - 1} for level ${level} category`,
+        });
+      }
+    }
+
+    const duplicate = await ProductCategory.findOne({
+      name: new RegExp(`^${rawName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i"),
+      level,
+      parent: parentDoc ? parentDoc._id : null,
+      isActive: true,
+    });
+    if (duplicate) {
+      return res.status(409).json({ message: "A category with this name already exists at this level" });
+    }
+
+    const path = level === 1 ? rawName : `${parentDoc.path} > ${rawName}`;
+    const subCategories =
+      level === 1 && Array.isArray(req.body?.subCategories)
+        ? req.body.subCategories
+            .map((s) => String(s || "").trim())
+            .filter(Boolean)
+            .filter((s, i, arr) => arr.findIndex((x) => x.toLowerCase() === s.toLowerCase()) === i)
+        : [];
+
+    const category = await ProductCategory.create({
+      name: rawName,
+      level,
+      parent: parentDoc ? parentDoc._id : null,
+      path,
+      isActive: true,
+      subCategories,
+    });
+
+    // Keep legacy `subCategories` list in sync for main categories
+    if (level === 2 && parentDoc) {
+      const parentSubs = Array.isArray(parentDoc.subCategories) ? parentDoc.subCategories : [];
+      if (!parentSubs.some((s) => String(s).toLowerCase() === rawName.toLowerCase())) {
+        parentDoc.subCategories = [...parentSubs, rawName];
+        await parentDoc.save();
+      }
+    }
+
+    res.status(201).json(category);
+  } catch (err) {
+    console.error("❌ Error creating category:", err);
+    res.status(500).json({ message: "Error creating category", error: err.message });
   }
 };
 

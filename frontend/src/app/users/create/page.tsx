@@ -94,7 +94,7 @@ export default function CreateUserPage() {
         const apiUrl = getBackendUrl();
         console.log("API URL:", apiUrl);
 
-        const [rolesRes, permissionsRes, managersRes, categoriesRes, managersAllRes] = await Promise.all([
+        const [rolesRes, permissionsRes, managersRes, categoriesRes, managersAllRes, productsRes] = await Promise.all([
           fetch('/api/roles', {
             headers: { Authorization: `Bearer ${token}` }
           }),
@@ -109,6 +109,9 @@ export default function CreateUserPage() {
           }),
           fetch('/api/managers/all', {
             headers: { Authorization: `Bearer ${token}` }
+          }),
+          fetch('/api/products?limit=2000', {
+            headers: { Authorization: `Bearer ${token}` }
           })
         ]);
 
@@ -116,7 +119,8 @@ export default function CreateUserPage() {
           roles: rolesRes.status,
           permissions: permissionsRes.status,
           managers: managersRes.status,
-          categories: categoriesRes.status
+          categories: categoriesRes.status,
+          products: productsRes.status
         });
 
         if (rolesRes.ok) {
@@ -191,27 +195,35 @@ export default function CreateUserPage() {
         if (categoriesRes.ok) {
           const categoriesData = await categoriesRes.json();
           const allCategories = Array.isArray(categoriesData) ? categoriesData : categoriesData.categories || [];
-          
-          // Filter to only show the 8 allowed main categories for manager assignment
-          const allowedMainCategories = [
-            'Building Care & Maintenance',
-            'Concrete Admixtures',
-            'Decorative Concrete',
-            'Dry Mix Mortars / Premix Plasters',
-            'Epoxy Adhesives and Coatings',
-            'Epoxy Floorings & Coatings',
-            'Specialty Products',
-            'Tiling and Grouting Materials'
-          ];
-          
-          // Filter categories to only include the 8 allowed main categories
-          const filteredCategories = allCategories.filter((category: any) => {
-            const categoryName = category.name || category.mainCategory || '';
-            return allowedMainCategories.includes(categoryName);
+
+          const allProductsData = productsRes.ok ? await productsRes.json() : [];
+          const products = Array.isArray(allProductsData) ? allProductsData : allProductsData.products || [];
+          const mainCategoriesWithProducts = new Set<string>(
+            products
+              .map((product: any) => String(product?.category?.mainCategory || "").trim())
+              .filter(Boolean)
+          );
+
+          // Show active main categories only, and only those that currently have products.
+          const mainCategories = allCategories.filter((category: any) => {
+            const categoryName = String(category?.name || category?.mainCategory || "").trim();
+            const isMainLevel = Number(category?.level) === 1 || !category?.parent;
+            const isActive = category?.isActive !== false;
+            return Boolean(categoryName) && isMainLevel && isActive && mainCategoriesWithProducts.has(categoryName);
           });
-          
-          console.log('✅ Filtered categories for manager assignment:', filteredCategories.length, 'out of', allCategories.length);
-          setCategories(filteredCategories);
+
+          const dedupedCategories = Array.from(
+            mainCategories.reduce((acc: Map<string, any>, category: any) => {
+              const key = String(category?.name || category?.mainCategory || "").trim().toLowerCase();
+              if (!acc.has(key)) acc.set(key, category);
+              return acc;
+            }, new Map<string, any>()).values()
+          ).sort((a: any, b: any) =>
+            String(a?.name || a?.mainCategory || "").localeCompare(String(b?.name || b?.mainCategory || ""))
+          );
+
+          console.log('✅ Main categories (with products) for manager assignment:', dedupedCategories.length);
+          setCategories(dedupedCategories);
         }
       } catch (error) {
         console.error("Error fetching data:", error);

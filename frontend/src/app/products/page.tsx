@@ -29,6 +29,28 @@ interface Product {
     gallery?: string[];
   };
   imageAlt?: string;
+  lastPriceChange?: {
+    previousPrice?: number;
+    newPrice?: number;
+    changedByName?: string;
+    changedByEmail?: string;
+    changedAt?: string;
+  };
+}
+
+interface PriceHistoryEntry {
+  _id: string;
+  previousPrice: number;
+  newPrice: number;
+  changedByName?: string;
+  changedByEmail?: string;
+  changedBy?: {
+    firstName?: string;
+    lastName?: string;
+    email?: string;
+  };
+  reason?: string;
+  createdAt: string;
 }
 
 export default function ProductsPage() {
@@ -52,7 +74,36 @@ export default function ProductsPage() {
   });
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("");
+  const [priceHistory, setPriceHistory] = useState<PriceHistoryEntry[]>([]);
+  const [priceHistoryLoading, setPriceHistoryLoading] = useState(false);
   const router = useRouter();
+  const fetchPriceHistory = async (productId: string) => {
+    try {
+      setPriceHistoryLoading(true);
+      const token = localStorage.getItem("token");
+      const response = await fetch(`/api/products/${productId}/price-history`, {
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
+
+      if (!response.ok) {
+        setPriceHistory([]);
+        return;
+      }
+
+      const data = await response.json().catch(() => ({}));
+      const entries = Array.isArray(data?.history) ? data.history : [];
+      setPriceHistory(entries);
+    } catch (error) {
+      console.error('Error fetching product price history:', error);
+      setPriceHistory([]);
+    } finally {
+      setPriceHistoryLoading(false);
+    }
+  };
+
 
   // Helper function to get product image
   const getProductImage = (product: Product) => {
@@ -204,7 +255,9 @@ export default function ProductsPage() {
           company_id: "RESSICHEM"
         });
       } else {
-        setMessage("❌ Failed to save product");
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage = errorData?.error || errorData?.message || "Failed to save product";
+        setMessage(`❌ ${errorMessage}`);
       }
     } catch (error) {
       console.error('Error saving product:', error);
@@ -217,6 +270,8 @@ export default function ProductsPage() {
   // Handle view product
   const handleViewProduct = (product: Product) => {
     setSelectedProduct(product);
+    setPriceHistory([]);
+    void fetchPriceHistory(product._id);
     setShowViewModal(true);
   };
 
@@ -541,6 +596,17 @@ export default function ProductsPage() {
                               <p className="text-lg sm:text-xl lg:text-2xl font-bold text-blue-900 dark:text-white">
                                 PKR {product.price.toLocaleString()}
                               </p>
+                              {product.lastPriceChange?.previousPrice !== undefined &&
+                                product.lastPriceChange?.newPrice !== undefined && (
+                                <p className="mt-1 text-[11px] sm:text-xs text-gray-600 dark:text-gray-400">
+                                  Last price change: PKR {Number(product.lastPriceChange.previousPrice || 0).toLocaleString()} {'->'} PKR {Number(product.lastPriceChange.newPrice || 0).toLocaleString()}
+                                </p>
+                              )}
+                              {product.lastPriceChange?.changedAt && (
+                                <p className="mt-0.5 text-[11px] sm:text-xs text-gray-500 dark:text-gray-400">
+                                  By {product.lastPriceChange.changedByName || product.lastPriceChange.changedByEmail || 'Unknown'} on {new Date(product.lastPriceChange.changedAt).toLocaleString()}
+                                </p>
+                              )}
                               <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
                                 product.stock === 0 ? 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400' :
                                 product.stock <= 10 ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400' :
@@ -917,6 +983,46 @@ export default function ProductsPage() {
                 <label className="block text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 sm:mb-2">Description</label>
                 <div className="bg-gray-50 dark:bg-gray-700 p-3 sm:p-4 rounded-lg">
                   <p className="text-sm sm:text-base text-blue-900 dark:text-white">{selectedProduct.description || 'No description provided'}</p>
+                </div>
+              </div>
+
+              <div className="mt-4 sm:mt-6">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Price Update History
+                </label>
+                <div className="bg-gray-50 dark:bg-gray-700 p-3 sm:p-4 rounded-lg space-y-2">
+                  {priceHistoryLoading ? (
+                    <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Loading history...</p>
+                  ) : priceHistory.length === 0 ? (
+                    <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">No price updates recorded yet.</p>
+                  ) : (
+                    priceHistory.map((entry) => {
+                      const updaterName =
+                        [entry.changedBy?.firstName, entry.changedBy?.lastName].filter(Boolean).join(' ').trim() ||
+                        entry.changedByName ||
+                        entry.changedBy?.email ||
+                        entry.changedByEmail ||
+                        'Unknown';
+                      return (
+                        <div
+                          key={entry._id}
+                          className="rounded border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 p-2 sm:p-3"
+                        >
+                          <p className="text-xs sm:text-sm text-blue-900 dark:text-white">
+                            PKR {Number(entry.previousPrice || 0).toLocaleString()} {'->'} PKR {Number(entry.newPrice || 0).toLocaleString()}
+                          </p>
+                          <p className="text-[11px] sm:text-xs text-gray-600 dark:text-gray-400">
+                            Updated by {updaterName} on {new Date(entry.createdAt).toLocaleString()}
+                          </p>
+                          {entry.reason && (
+                            <p className="text-[11px] sm:text-xs text-gray-600 dark:text-gray-400">
+                              Reason: {entry.reason}
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
                 </div>
               </div>
 

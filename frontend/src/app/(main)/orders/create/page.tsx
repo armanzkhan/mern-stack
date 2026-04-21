@@ -101,6 +101,51 @@ function getProductMainCategory(product: Product): string | null {
   return null;
 }
 
+/** Match product main category to a dropdown option label (controlled `<select>` needs exact option values). */
+function resolveCategoryOptionForProduct(product: Product, options: string[]): string {
+  const main = getProductMainCategory(product);
+  if (!main) return "";
+  if (options.includes(main)) return main;
+  const matched = options.find((o) => categoriesMatch(o, main));
+  return matched ?? main;
+}
+
+/** Search full product pool by name / SKU / description (same rules as order line search). */
+function filterProductsBySearchQuery(query: string, pool: Product[]): Product[] {
+  const searchTerm = query.toLowerCase().trim();
+  if (!searchTerm) return [];
+  return pool.filter((product) => {
+    const nameMatch = product.name?.toLowerCase().includes(searchTerm);
+    const skuMatch = String(product.sku || "")
+      .toLowerCase()
+      .includes(searchTerm);
+    const descMatch = (product.description || "").toLowerCase().includes(searchTerm);
+    return nameMatch || skuMatch || descMatch;
+  });
+}
+
+/**
+ * When the user types in Product Name (not only when clicking the list), pick a product if unambiguous:
+ * exact name, exact SKU, or a single substring match (min length 2).
+ */
+function pickProductFromSearchMatches(candidates: Product[], rawQuery: string): Product | null {
+  const q = rawQuery.trim();
+  if (!q || candidates.length === 0) return null;
+  const qLower = q.toLowerCase();
+
+  const exactName = candidates.find((p) => (p.name || "").trim().toLowerCase() === qLower);
+  if (exactName) return exactName;
+
+  const exactSku = candidates.find(
+    (p) => String(p.sku || "").trim().toLowerCase() === qLower
+  );
+  if (exactSku) return exactSku;
+
+  if (candidates.length === 1 && q.length >= 2) return candidates[0];
+
+  return null;
+}
+
 /** One label per semantic category: merged manager + product lists used to add duplicates like "&" vs "and". */
 function dedupeCategoryDropdownLabels(
   merged: string[],
@@ -172,6 +217,17 @@ export default function CreateOrderPage() {
   const router = useRouter();
   const { user, loading: userLoading } = useUser();
   const customerBootstrapAttemptedRef = useRef(false);
+  const categoryProductsCacheRef = useRef<Record<string, Product[]>>({});
+  const categoryFetchInFlightRef = useRef<Set<string>>(new Set());
+  const formDataRef = useRef(formData);
+  formDataRef.current = formData;
+  const productSearchResolveTimersRef = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
+
+  useEffect(() => {
+    return () => {
+      Object.values(productSearchResolveTimersRef.current).forEach((id) => clearTimeout(id));
+    };
+  }, []);
   const roleNames = (user?.roles || [])
     .map((r: any) => {
       if (typeof r === "string") return r.toLowerCase();
@@ -214,45 +270,93 @@ export default function CreateOrderPage() {
     [customers, customerSearchTerm]
   );
 
-  // Get products for display - show ALL products for customers, filtered for managers
+  // Get products for display - show ALL products to keep catalog complete and selectable.
   const getFilteredProducts = () => {
-    // For customers: filter by assigned managers' categories if managers are assigned
-    if (user?.userType === 'customer' || user?.isCustomer) {
-      // If customer has assigned managers, filter products by their categories
-      if (customerManagerCategories.length > 0) {
-        return products.filter(product => {
-          const mainCategory = getProductMainCategory(product);
-          if (!mainCategory) return false;
-          return customerManagerCategories.some(assignedCat =>
-            categoriesMatch(assignedCat, mainCategory)
-          );
-        });
-      }
-      // If no managers assigned, show all products
-      return products;
-    }
-    
-    // For managers: filter by assigned categories
-    if (managerProfile?.assignedCategories && managerProfile.assignedCategories.length > 0) {
-      const assignedCategories = managerProfile.assignedCategories;
-
-      return products.filter(product => {
-        const mainCategory = getProductMainCategory(product);
-        if (!mainCategory) return false;
-        return assignedCategories.some((assignedCat: unknown) => {
-          const ac =
-            typeof assignedCat === "string"
-              ? assignedCat
-              : (assignedCat as { category?: string; name?: string }).category ||
-                (assignedCat as { name?: string }).name ||
-                "";
-          return ac ? categoriesMatch(ac, mainCategory) : false;
-        });
-      });
-    }
-
-    // Default: show all products
     return products;
+  };
+
+  const mergeUniqueProducts = (existing: Product[], incoming: Product[]): Product[] => {
+    if (incoming.length === 0) return existing;
+    const merged = [...existing, ...incoming];
+    const seen = new Set<string>();
+    return merged.filter((product) => {
+      const id = String(product._id || "");
+      if (!id) return true;
+      if (seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
+  };
+
+  const getCategoryVariants = (selectedCategory: string): string[] => {
+    const raw = String(selectedCategory || "").trim();
+    if (!raw) return [];
+    const variants = new Set<string>([raw]);
+    if (/\band\b/i.test(raw)) {
+      variants.add(raw.replace(/\band\b/gi, "&"));
+    }
+    if (raw.includes("&")) {
+      variants.add(raw.replace(/\s*&\s*/g, " and "));
+    }
+    return Array.from(variants).map((v) => v.replace(/\s+/g, " ").trim()).filter(Boolean);
+  };
+
+  const fetchProductsByExactMainCategory = async (mainCategory: string): Promise<Product[]> => {
+    const pageSize = 200;
+    const firstRes = await fetch(
+      `/api/products?limit=${pageSize}&page=1&meta=1&mainCategory=${encodeURIComponent(mainCategory)}`,
+      { headers: getAuthHeaders() }
+    );
+    if (!firstRes.ok) return [];
+    const firstRaw: unknown = await firstRes.json();
+    const firstBody = Array.isArray(firstRaw)
+      ? { products: firstRaw as Product[], pagination: { totalPages: 1 } }
+      : (firstRaw as { products?: Product[]; pagination?: { totalPages?: number } });
+    const merged = [...(firstBody.products || [])];
+    const totalPages = Math.max(1, Number(firstBody.pagination?.totalPages || 1));
+    for (let page = 2; page <= totalPages; page++) {
+      const res = await fetch(
+        `/api/products?limit=${pageSize}&page=${page}&meta=1&mainCategory=${encodeURIComponent(mainCategory)}`,
+        { headers: getAuthHeaders() }
+      );
+      if (!res.ok) break;
+      const raw: unknown = await res.json();
+      const body = Array.isArray(raw)
+        ? { products: raw as Product[] }
+        : (raw as { products?: Product[] });
+      const chunk = body.products || [];
+      if (chunk.length === 0) break;
+      merged.push(...chunk);
+    }
+    return mergeUniqueProducts([], merged);
+  };
+
+  const ensureCategoryProductsLoaded = async (selectedCategory?: string) => {
+    const key = normalizeCategoryName(String(selectedCategory || ""));
+    if (!key) return;
+    if (categoryProductsCacheRef.current[key]) return;
+    if (categoryFetchInFlightRef.current.has(key)) return;
+
+    categoryFetchInFlightRef.current.add(key);
+    try {
+      const variants = getCategoryVariants(String(selectedCategory || ""));
+      let fetchedProducts: Product[] = [];
+
+      for (const variant of variants) {
+        const chunk = await fetchProductsByExactMainCategory(variant);
+        if (chunk.length > 0) {
+          fetchedProducts = mergeUniqueProducts(fetchedProducts, chunk);
+        }
+      }
+
+      // If exact category queries return nothing, keep client-side fallback filtering available.
+      categoryProductsCacheRef.current[key] = fetchedProducts;
+      setProducts((prev) => mergeUniqueProducts(prev, fetchedProducts));
+    } catch (error) {
+      console.warn("Category-specific product fetch failed:", error);
+    } finally {
+      categoryFetchInFlightRef.current.delete(key);
+    }
   };
 
   // Filter products by category for a specific item
@@ -264,11 +368,30 @@ export default function CreateOrderPage() {
       return baseProducts;
     }
 
-    return baseProducts.filter(product => {
+    const key = normalizeCategoryName(String(selectedCategory));
+    const cached = categoryProductsCacheRef.current[key];
+
+    /** DB string on products vs dropdown label can differ; API uses exact mainCategory match. */
+    const fromClient = baseProducts.filter((product) => {
       const mainCategory = getProductMainCategory(product);
       if (!mainCategory) return false;
       return categoriesMatch(mainCategory, selectedCategory);
     });
+
+    if (cached && cached.length > 0) {
+      const byId = new Map<string, Product>();
+      for (const p of cached) {
+        const id = String(p._id || "");
+        if (id) byId.set(id, p);
+      }
+      for (const p of fromClient) {
+        const id = String(p._id || "");
+        if (id && !byId.has(id)) byId.set(id, p);
+      }
+      return Array.from(byId.values());
+    }
+
+    return fromClient;
   };
 
   // Get unique categories from products
@@ -1023,6 +1146,11 @@ export default function CreateOrderPage() {
     if (filteredProducts.length > 0) {
       const newIndex = formData.items.length;
       const firstProduct = filteredProducts[0];
+      const categoryOptions = getCategoryOptionsForDropdown();
+      const initialCategory = resolveCategoryOptionForProduct(firstProduct, categoryOptions);
+      if (initialCategory) {
+        void ensureCategoryProductsLoaded(initialCategory);
+      }
       setFormData(prev => ({
         ...prev,
         items: [...prev.items, { 
@@ -1030,7 +1158,7 @@ export default function CreateOrderPage() {
           quantity: 1, 
           price: firstProduct?.price || 0,
           tdsLink: "",
-          selectedCategory: ""
+          selectedCategory: initialCategory
         }]
       }));
       // Initialize search term as empty - user can type to search
@@ -1079,25 +1207,37 @@ export default function CreateOrderPage() {
 
   // Update item
   const updateItem = (index: number, field: keyof OrderItem, value: any) => {
+    if (field === "product") {
+      const categoryOptions = getCategoryOptionsForDropdown();
+      const nextSelectedCategory = resolveCategoryOptionForProduct(value, categoryOptions);
+      if (nextSelectedCategory) {
+        void ensureCategoryProductsLoaded(nextSelectedCategory);
+      }
+      if (!isCategoryChanging[index]) {
+        setProductSearchTerms((prev) => ({ ...prev, [index]: value.name }));
+      }
+      setProductSearchOpen((prev) => ({ ...prev, [index]: false }));
+      setFormData((prev) => ({
+        ...prev,
+        items: prev.items.map((item, i) => {
+          if (i !== index) return item;
+          return {
+            ...item,
+            product: value,
+            price: value.price,
+            tdsLink: value.tdsLink || item.tdsLink || "",
+            selectedCategory: nextSelectedCategory || item.selectedCategory || "",
+          };
+        }),
+      }));
+      return;
+    }
+
     setFormData(prev => ({
       ...prev,
       items: prev.items.map((item, i) => {
         if (i === index) {
-          if (field === 'product') {
-            // When product changes, auto-populate TDS link from product if available
-            // Only update search term if user explicitly selected (not auto-selected during category change)
-            if (!isCategoryChanging[index]) {
-              // Only set search term if this is not during a category change
-              setProductSearchTerms(prev => ({ ...prev, [index]: value.name }));
-            }
-            setProductSearchOpen(prev => ({ ...prev, [index]: false }));
-            return { 
-              ...item, 
-              product: value, 
-              price: value.price,
-              tdsLink: value.tdsLink || item.tdsLink || ""
-            };
-          } else if (field === 'quantity') {
+          if (field === 'quantity') {
             return { ...item, quantity: value, price: item.product.price * value };
           } else if (field === 'tdsLink') {
             // When TDS link changes, save it to the product in database in real-time (debounced)
@@ -1106,6 +1246,7 @@ export default function CreateOrderPage() {
             }
             return { ...item, [field]: value };
           } else if (field === 'selectedCategory') {
+            void ensureCategoryProductsLoaded(String(value || ""));
             // Set flag to prevent search term from being set during category change
             setIsCategoryChanging(prev => ({ ...prev, [index]: true }));
             
@@ -1161,6 +1302,29 @@ export default function CreateOrderPage() {
         return item;
       })
     }));
+  };
+
+  /** While typing Product Name, resolve against the full catalog and apply product + category when unambiguous. */
+  const tryResolveProductFromTypedSearch = (index: number, rawQuery: string) => {
+    if (isCategoryChanging[index]) return;
+    const query = rawQuery.trim();
+    if (!query) return;
+    const pool = getFilteredProducts();
+    const candidates = filterProductsBySearchQuery(query, pool);
+    const picked = pickProductFromSearchMatches(candidates, query);
+    if (!picked) return;
+    const current = formDataRef.current.items[index];
+    if (current?.product?._id && String(current.product._id) === String(picked._id)) return;
+    updateItem(index, "product", picked);
+  };
+
+  const scheduleProductSearchResolve = (index: number, rawQuery: string) => {
+    const prev = productSearchResolveTimersRef.current[index];
+    if (prev) clearTimeout(prev);
+    productSearchResolveTimersRef.current[index] = setTimeout(() => {
+      tryResolveProductFromTypedSearch(index, rawQuery);
+      delete productSearchResolveTimersRef.current[index];
+    }, 380);
   };
 
   // Save TDS link to product in database (with debouncing for real-time saving)
@@ -1839,8 +2003,10 @@ export default function CreateOrderPage() {
                                 type="text"
                                 value={productSearchTerms[index] !== undefined ? productSearchTerms[index] : (item.product?.name || '')}
                                 onChange={(e) => {
-                                  setProductSearchTerms(prev => ({ ...prev, [index]: e.target.value }));
+                                  const v = e.target.value;
+                                  setProductSearchTerms(prev => ({ ...prev, [index]: v }));
                                   setProductSearchOpen(prev => ({ ...prev, [index]: true }));
+                                  scheduleProductSearchResolve(index, v);
                                 }}
                                 onFocus={() => {
                                   // If search term is empty and product is selected, clear it to start fresh search
@@ -1850,10 +2016,20 @@ export default function CreateOrderPage() {
                                   setProductSearchOpen(prev => ({ ...prev, [index]: true }));
                                 }}
                                 onBlur={() => {
-                                  // When losing focus, if search is empty, restore product name
-                                  if (!productSearchTerms[index] && item.product?.name) {
-                                    setProductSearchTerms(prev => ({ ...prev, [index]: item.product.name }));
+                                  const pending = productSearchResolveTimersRef.current[index];
+                                  if (pending) {
+                                    clearTimeout(pending);
+                                    delete productSearchResolveTimersRef.current[index];
                                   }
+                                  const term =
+                                    productSearchTerms[index] !== undefined
+                                      ? productSearchTerms[index]
+                                      : item.product?.name || "";
+                                  if (!String(term).trim() && item.product?.name) {
+                                    setProductSearchTerms(prev => ({ ...prev, [index]: item.product.name }));
+                                    return;
+                                  }
+                                  tryResolveProductFromTypedSearch(index, String(term));
                                 }}
                                 placeholder="Search products by name, SKU..."
                                 className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 pl-10 text-dark focus:border-primary focus:outline-none dark:border-dark-3 dark:bg-dark-2 dark:text-white transition-colors"

@@ -86,6 +86,7 @@ function ManagersPage() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showManagerSelectModal, setShowManagerSelectModal] = useState(false);
   const [showViewModal, setShowViewModal] = useState(false);
+  const [showCategoryManageModal, setShowCategoryManageModal] = useState(false);
   const [editingManager, setEditingManager] = useState<Manager | null>(null);
   const [selectedManager, setSelectedManager] = useState<Manager | null>(null);
   const [availableCategories, setAvailableCategories] = useState<string[]>([]);
@@ -823,6 +824,14 @@ function ManagersPage() {
                     <span className="sm:hidden">Assign</span>
                   </button>
                 </PermissionGate>
+                <button
+                  onClick={() => setShowCategoryManageModal(true)}
+                  className="inline-flex items-center justify-center rounded-lg sm:rounded-xl bg-blue-900 px-3 py-2 sm:px-4 sm:py-3 lg:px-6 lg:py-3 text-center font-medium text-white hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-900/50 transition-all duration-300 hover:shadow-lg text-xs sm:text-sm lg:text-base"
+                >
+                  <Package className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4 lg:h-5 lg:w-5" />
+                  <span className="hidden sm:inline">Manage Categories</span>
+                  <span className="sm:hidden">Categories</span>
+                </button>
               </div>
             </div>
             
@@ -1665,6 +1674,36 @@ function ManagersPage() {
                   className="px-4 py-2 text-sm font-medium text-white bg-primary rounded-lg hover:bg-opacity-90"
                 >
                   Assign Categories
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Category Management Navigation Modal */}
+        {showCategoryManageModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+            <div className="bg-white dark:bg-boxdark rounded-lg p-6 w-full max-w-md mx-4">
+              <h3 className="text-lg font-semibold text-blue-900 dark:text-white mb-3">Manage Product Categories</h3>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">
+                Open the Product Categories page to create, edit, and manage active main categories used for manager assignments.
+              </p>
+
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => setShowCategoryManageModal(false)}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 dark:bg-gray-600 dark:text-gray-300 dark:hover:bg-gray-500"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    setShowCategoryManageModal(false);
+                    router.push("/products/categories");
+                  }}
+                  className="px-4 py-2 text-sm font-medium text-white bg-blue-900 rounded-lg hover:bg-blue-800"
+                >
+                  Go to Product Categories
                 </button>
               </div>
             </div>
