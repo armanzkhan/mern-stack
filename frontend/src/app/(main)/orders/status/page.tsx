@@ -26,6 +26,7 @@ const getStatusColor = (status: string) => {
   switch (status.toLowerCase()) {
     case 'dispatch': return 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900/20 dark:text-cyan-400';
     case 'hold': return 'bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-400';
+    case 'partial_shipment': return 'bg-sky-100 text-sky-800 dark:bg-sky-900/20 dark:text-sky-400';
     case 'pending': return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400';
     case 'approved': return 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400';
     case 'rejected': return 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400';
@@ -70,6 +71,21 @@ export default function OrderStatusPage() {
   // Handle status update
   const handleStatusUpdate = async (orderId: string, newStatus: string) => {
     try {
+      let comments: string | undefined;
+      if (["hold", "dispatch", "partial_shipment"].includes(newStatus)) {
+        const message =
+          newStatus === "hold"
+            ? "Enter reason for putting this order on hold:"
+            : newStatus === "dispatch"
+            ? "Enter dispatch remark/details:"
+            : "Enter partial shipment details (what is shipped / pending):";
+        const reason = window.prompt(message);
+        if (reason === null) return;
+        const trimmedReason = reason.trim();
+        if (!trimmedReason) return;
+        comments = trimmedReason;
+      }
+
       // Get token from localStorage
       const token = localStorage.getItem("token");
       
@@ -79,7 +95,10 @@ export default function OrderStatusPage() {
           'Content-Type': 'application/json',
           ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ status: newStatus }),
+        body: JSON.stringify({
+          status: newStatus,
+          ...(comments ? { comments } : {}),
+        }),
       });
       
       if (response.ok) {
@@ -150,6 +169,10 @@ export default function OrderStatusPage() {
           <h3 className="text-2xl font-bold text-orange-600">{orders.filter(o => o.status === 'hold').length}</h3>
           <p className="text-sm text-gray-600 dark:text-gray-400">Hold</p>
         </div>
+        <div className="rounded-lg bg-white p-6 shadow-1 dark:bg-gray-dark dark:shadow-card">
+          <h3 className="text-2xl font-bold text-sky-600">{orders.filter(o => o.status === 'partial_shipment').length}</h3>
+          <p className="text-sm text-gray-600 dark:text-gray-400">Partial Shipment</p>
+        </div>
       </div>
 
       <div className="rounded-[10px] bg-white shadow-1 dark:bg-gray-dark dark:shadow-card">
@@ -166,6 +189,7 @@ export default function OrderStatusPage() {
               <option value="">All Status</option>
               <option value="dispatch">Dispatch</option>
               <option value="hold">Hold</option>
+              <option value="partial_shipment">Partial Shipment</option>
             </select>
             <input
               type="text"
@@ -230,6 +254,7 @@ export default function OrderStatusPage() {
                         >
                           <option value="dispatch">Dispatch</option>
                           <option value="hold">Hold</option>
+                          <option value="partial_shipment">Partial Shipment</option>
                         </select>
                       </td>
                       <td className="px-4 py-3">

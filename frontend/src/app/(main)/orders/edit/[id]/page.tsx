@@ -95,7 +95,7 @@ export default function EditOrderPage() {
           customer: orderData.customer._id,
           items: orderData.items || [],
           notes: orderData.notes || "",
-          status: ["dispatch", "hold"].includes(orderData.status) ? orderData.status : "hold"
+          status: ["dispatch", "hold", "partial_shipment"].includes(orderData.status) ? orderData.status : "hold"
         });
       }
 
@@ -333,6 +333,7 @@ export default function EditOrderPage() {
                 >
                   <option value="dispatch">Dispatch</option>
                   <option value="hold">Hold</option>
+                  <option value="partial_shipment">Partial Shipment</option>
                 </select>
               </div>
             </div>

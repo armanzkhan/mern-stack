@@ -6,7 +6,7 @@ const Product = require("../models/Product");
 const notificationService = require("../services/notificationService");
 const managerSyncService = require("../services/managerSyncService");
 const { getAllCategories, getMainCategories } = require("../utils/productCategories");
-const LOGISTICS_STATUSES = ["dispatch", "hold"];
+const LOGISTICS_STATUSES = ["dispatch", "hold", "partial_shipment"];
 const MANAGER_STATUSES = ["processing", "rejected"];
 const COMPANY_ADMIN_STATUSES = [
   "pending",
@@ -17,6 +17,7 @@ const COMPANY_ADMIN_STATUSES = [
   "allocated",
   "dispatch",
   "hold",
+  "partial_shipment",
   "dispatched",
   "shipped",
   "completed",
@@ -426,6 +427,7 @@ exports.getManagerOrders = async (req, res) => {
         if (!cat || typeof cat !== 'string') return '';
         return cat.toLowerCase().trim()
           .replace(/\s*&\s*/g, ' and ')
+          .replace(/\bspeciality\b/g, 'specialty')
           .replace(/\s+/g, ' ');
       };
       
@@ -526,6 +528,7 @@ exports.getManagerOrders = async (req, res) => {
       if (!cat || typeof cat !== 'string') return '';
       return cat.toLowerCase().trim()
         .replace(/\s*&\s*/g, ' and ')
+        .replace(/\bspeciality\b/g, 'specialty')
         .replace(/\s+/g, ' ');
     };
     
@@ -1521,7 +1524,7 @@ exports.createManager = async (req, res) => {
 exports.updateManager = async (req, res) => {
   try {
     const { id } = req.params;
-    const { managerLevel, isActive, notificationPreferences } = req.body;
+    const { managerLevel, isActive, notificationPreferences, assignedCategories } = req.body;
     const companyId = req.user.company_id;
 
     const manager = await Manager.findOne({ _id: id, company_id: companyId });
@@ -1535,6 +1538,42 @@ exports.updateManager = async (req, res) => {
     if (notificationPreferences) {
       manager.notificationPreferences = { ...manager.notificationPreferences, ...notificationPreferences };
     }
+
+    if (Array.isArray(assignedCategories)) {
+      // Keep category updates consistent with assign-categories endpoint.
+      let assignedByUserId = req.user._id;
+      if (!assignedByUserId) {
+        const currentUser = await User.findOne({
+          user_id: req.user.user_id,
+          company_id: companyId
+        }).select('_id');
+        if (!currentUser) {
+          return res.status(400).json({ message: "Unable to identify current user" });
+        }
+        assignedByUserId = currentUser._id;
+      }
+
+      manager.assignedCategories = assignedCategories.map((category) => ({
+        category,
+        assignedBy: assignedByUserId,
+        assignedAt: new Date(),
+        isActive: true
+      }));
+
+      await CategoryAssignment.deleteMany({ manager_id: manager._id });
+      for (const category of assignedCategories) {
+        await CategoryAssignment.create({
+          manager_id: manager._id,
+          user_id: manager.user_id,
+          company_id: companyId,
+          category,
+          assignedBy: assignedByUserId,
+          isActive: true,
+          isPrimary: true
+        });
+      }
+    }
+
     manager.updatedBy = req.user._id;
 
     await manager.save();

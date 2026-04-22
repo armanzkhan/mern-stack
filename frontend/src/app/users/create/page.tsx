@@ -20,6 +20,14 @@ interface Permission {
 }
 
 export default function CreateUserPage() {
+  const normalizeCategoryKey = (value: string) =>
+    String(value || "")
+      .toLowerCase()
+      .replace(/&/g, "and")
+      .replace(/speciality/g, "specialty")
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim();
+
   const initialFormData = {
     firstName: "",
     lastName: "",
@@ -200,21 +208,29 @@ export default function CreateUserPage() {
           const products = Array.isArray(allProductsData) ? allProductsData : allProductsData.products || [];
           const mainCategoriesWithProducts = new Set<string>(
             products
-              .map((product: any) => String(product?.category?.mainCategory || "").trim())
+              .map((product: any) =>
+                normalizeCategoryKey(String(product?.category?.mainCategory || "").trim())
+              )
               .filter(Boolean)
           );
 
           // Show active main categories only, and only those that currently have products.
           const mainCategories = allCategories.filter((category: any) => {
             const categoryName = String(category?.name || category?.mainCategory || "").trim();
+            const normalizedCategoryName = normalizeCategoryKey(categoryName);
             const isMainLevel = Number(category?.level) === 1 || !category?.parent;
             const isActive = category?.isActive !== false;
-            return Boolean(categoryName) && isMainLevel && isActive && mainCategoriesWithProducts.has(categoryName);
+            return (
+              Boolean(categoryName) &&
+              isMainLevel &&
+              isActive &&
+              mainCategoriesWithProducts.has(normalizedCategoryName)
+            );
           });
 
           const dedupedCategories = Array.from(
             mainCategories.reduce((acc: Map<string, any>, category: any) => {
-              const key = String(category?.name || category?.mainCategory || "").trim().toLowerCase();
+              const key = normalizeCategoryKey(String(category?.name || category?.mainCategory || "").trim());
               if (!acc.has(key)) acc.set(key, category);
               return acc;
             }, new Map<string, any>()).values()
@@ -403,7 +419,7 @@ export default function CreateUserPage() {
         isCustomer: false,
         isManager: false,
         assignedCategories: [],
-        managerStatusActions: ["dispatch", "hold"],
+        managerStatusActions: ["dispatch", "hold", "partial_shipment"],
         roles: assignedRoles,
         permissions: assignedPermissions
       }));

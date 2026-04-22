@@ -11,7 +11,15 @@ const realtimeService = require("../services/realtimeService");
 const itemApprovalService = require("../services/itemApprovalService");
 const OrderItemApproval = require("../models/OrderItemApproval");
 
-const LOGISTICS_STATUSES = ["dispatch", "hold"];
+const LOGISTICS_STATUSES = ["dispatch", "hold", "partial_shipment"];
+const LOGISTICS_VISIBLE_STATUSES = [
+  "approved",
+  ...LOGISTICS_STATUSES,
+  "dispatched",
+  "shipped",
+  "completed",
+  "cancelled",
+];
 const MANAGER_STATUSES = ["processing", "rejected"];
 const COMPANY_ADMIN_STATUSES = [
   "pending",
@@ -22,6 +30,7 @@ const COMPANY_ADMIN_STATUSES = [
   "allocated",
   "dispatch",
   "hold",
+  "partial_shipment",
   "dispatched",
   "shipped",
   "completed",
@@ -29,12 +38,34 @@ const COMPANY_ADMIN_STATUSES = [
 ];
 
 const normalizeRoleName = (role) => String(role || "").toLowerCase().trim();
+const getActorMeta = (req) => {
+  const firstName = String(req.user?.firstName || "").trim();
+  const lastName = String(req.user?.lastName || "").trim();
+  const fullName = `${firstName} ${lastName}`.trim();
+  const role = normalizeRoleName(req.user?.role);
+  let source = "system";
+  if (req.user?.isCustomer || role === "customer") source = "customer";
+  else if (req.user?.isSuperAdmin || req.user?.isCompanyAdmin || isCompanyAdminUser(req)) source = "admin";
+  else if (role.includes("logistic")) source = "logistics";
+  else if (req.user?.isManager) source = "manager";
+
+  return {
+    userId: req.user?._id || null,
+    email: req.user?.email || "",
+    name: fullName || req.user?.email || "System",
+    source,
+  };
+};
 
 const isLogisticManagerUser = (req) => {
   const tokenRole = normalizeRoleName(req.user?.role);
   const tokenRoles = Array.isArray(req.user?.roles) ? req.user.roles.map(normalizeRoleName) : [];
-  return tokenRole === "logistic manager" || tokenRole === "logistic_manager" ||
-    tokenRoles.includes("logistic manager") || tokenRoles.includes("logistic_manager");
+  return tokenRole === "logistic manager" ||
+    tokenRole === "logistic_manager" ||
+    tokenRole === "logistic" ||
+    tokenRoles.includes("logistic manager") ||
+    tokenRoles.includes("logistic_manager") ||
+    tokenRoles.includes("logistic");
 };
 
 /** Token + DB (JWT may omit role strings on older tokens). */
@@ -51,8 +82,10 @@ const isLogisticManagerRequest = async (req, companyId) => {
   return (
     r === "logistic manager" ||
     r === "logistic_manager" ||
+    r === "logistic" ||
     rs.includes("logistic manager") ||
-    rs.includes("logistic_manager")
+    rs.includes("logistic_manager") ||
+    rs.includes("logistic")
   );
 };
 
@@ -198,11 +231,24 @@ exports.createOrder = async (req, res) => {
       tax,
       total,
       notes,
+      customerNotes: notes,
       attachment: normalizedAttachment,
       createdBy: req.user ? req.user._id : null,
       company_id: companyId,
       categories: Array.from(categories),
-      requiresApproval: categories.size > 0
+      requiresApproval: categories.size > 0,
+      statusHistory: [
+        {
+          fromStatus: null,
+          toStatus: "pending",
+          changedAt: new Date(),
+          changedBy: req.user ? req.user._id : null,
+          changedByEmail: req.user?.email || "",
+          changedByName: req.user?.email || "System",
+          reason: notes || "",
+          source: req.user?.isCustomer ? "customer" : "admin",
+        },
+      ],
     });
 
     await order.save();
@@ -533,17 +579,18 @@ exports.getOrders = async (req, res) => {
         (isLogisticManagerUser(req) ||
           fullUserRole === "logistic manager" ||
           fullUserRole === "logistic_manager" ||
+          fullUserRole === "logistic" ||
           fullUserRoles.includes("logistic manager") ||
-          fullUserRoles.includes("logistic_manager"));
+          fullUserRoles.includes("logistic_manager") ||
+          fullUserRoles.includes("logistic"));
 
       if (isLogisticUser) {
         // Logistics board: approved orders are actionable, while dispatch/hold remain visible for tracking.
-        const logisticsVisibleStatuses = ["approved", ...LOGISTICS_STATUSES];
         query = {
           company_id: companyFilter,
-          status: { $in: logisticsVisibleStatuses },
+          status: { $in: LOGISTICS_VISIBLE_STATUSES },
         };
-        console.log(`🚚 Logistic manager ${req.user?.email}: returning logistics-visible orders (${logisticsVisibleStatuses.join(", ")})`);
+        console.log(`🚚 Logistic manager ${req.user?.email}: returning logistics-visible orders (${LOGISTICS_VISIBLE_STATUSES.join(", ")})`);
       }
       
       // Company admins / super admins should always see all company orders,
@@ -851,9 +898,9 @@ exports.getOrderById = async (req, res) => {
       (await isLogisticManagerRequest(req, orderCompanyId))
     ) {
       const st = String(order.status || "").toLowerCase();
-      if (![ "approved", ...LOGISTICS_STATUSES ].includes(st)) {
+      if (!LOGISTICS_VISIBLE_STATUSES.includes(st)) {
         return res.status(403).json({
-          message: `Logistics can only view orders that are in: ${["approved", ...LOGISTICS_STATUSES].join(", ")} status.`,
+          message: `Logistics can only view orders that are in: ${LOGISTICS_VISIBLE_STATUSES.join(", ")} status.`,
         });
       }
     }
@@ -986,16 +1033,26 @@ exports.updateOrderStatus = async (req, res) => {
     }
 
     if (status && (await isLogisticManagerRequest(req, companyId))) {
+      if (Number(discountAmount || 0) > 0) {
+        return res.status(403).json({
+          message: "Logistics managers are not allowed to apply discounts.",
+        });
+      }
       const oldS = String(oldOrder.status || "").toLowerCase();
       const newS = String(status).toLowerCase();
-      if (oldS !== "approved") {
+      if (!["approved", "hold", "partial_shipment"].includes(oldS)) {
         return res.status(403).json({
-          message: "Logistics can only update orders that are in approved status.",
+          message: "Logistics can only update orders that are in approved, hold, or partial_shipment status.",
         });
       }
       if (!LOGISTICS_STATUSES.includes(newS)) {
         return res.status(400).json({
           message: `Logistics can only set status to: ${LOGISTICS_STATUSES.join(", ")}.`,
+        });
+      }
+      if (["hold", "dispatch", "partial_shipment"].includes(newS) && !String(comments || "").trim()) {
+        return res.status(400).json({
+          message: "Reason is required when setting status to hold, dispatch, or partial_shipment.",
         });
       }
     }
@@ -1017,8 +1074,68 @@ exports.updateOrderStatus = async (req, res) => {
 
     // Prepare update data
     const updateData = {};
+    const actorMeta = getActorMeta(req);
+    const nextStatus = status ? String(status).toLowerCase() : String(oldOrder.status || "").toLowerCase();
     if (status) {
-      updateData.status = String(status).toLowerCase();
+      updateData.status = nextStatus;
+    }
+    if (String(status || "").toLowerCase() === "hold" && String(comments || "").trim()) {
+      const holdReason = String(comments).trim();
+      const currentRemarks = Array.isArray(oldOrder.logisticsRemarks) ? [...oldOrder.logisticsRemarks] : [];
+      currentRemarks.push({
+        status: "hold",
+        remark: holdReason,
+        createdAt: new Date(),
+        createdBy: actorMeta.userId,
+        createdByEmail: actorMeta.email,
+        createdByName: actorMeta.name,
+      });
+      updateData.logisticsRemarks = currentRemarks;
+    } else if (
+      String(status || "").toLowerCase() === "dispatch" &&
+      String(comments || "").trim()
+    ) {
+      const dispatchRemark = String(comments).trim();
+      const currentRemarks = Array.isArray(oldOrder.logisticsRemarks) ? [...oldOrder.logisticsRemarks] : [];
+      currentRemarks.push({
+        status: "dispatch",
+        remark: dispatchRemark,
+        createdAt: new Date(),
+        createdBy: actorMeta.userId,
+        createdByEmail: actorMeta.email,
+        createdByName: actorMeta.name,
+      });
+      updateData.logisticsRemarks = currentRemarks;
+    } else if (
+      String(status || "").toLowerCase() === "partial_shipment" &&
+      String(comments || "").trim()
+    ) {
+      const partialShipmentRemark = String(comments).trim();
+      const currentRemarks = Array.isArray(oldOrder.logisticsRemarks) ? [...oldOrder.logisticsRemarks] : [];
+      currentRemarks.push({
+        status: "partial_shipment",
+        remark: partialShipmentRemark,
+        createdAt: new Date(),
+        createdBy: actorMeta.userId,
+        createdByEmail: actorMeta.email,
+        createdByName: actorMeta.name,
+      });
+      updateData.logisticsRemarks = currentRemarks;
+    }
+
+    if (status && String(oldOrder.status || "").toLowerCase() !== nextStatus) {
+      const currentStatusHistory = Array.isArray(oldOrder.statusHistory) ? [...oldOrder.statusHistory] : [];
+      currentStatusHistory.push({
+        fromStatus: String(oldOrder.status || "").toLowerCase(),
+        toStatus: nextStatus,
+        changedAt: new Date(),
+        changedBy: actorMeta.userId,
+        changedByEmail: actorMeta.email,
+        changedByName: actorMeta.name,
+        reason: String(comments || "").trim(),
+        source: actorMeta.source,
+      });
+      updateData.statusHistory = currentStatusHistory;
     }
     
     // Handle discount amount if provided
@@ -1087,6 +1204,27 @@ exports.updateOrder = async (req, res) => {
     const oldOrder = await Order.findOne({ _id: req.params.id, company_id: companyId });
     if (!oldOrder) return res.status(404).json({ message: "Order not found" });
 
+    const isLogisticsRequest = await isLogisticManagerRequest(req, companyId);
+    if (isLogisticsRequest) {
+      const attemptedNonStatusUpdate =
+        notes !== undefined ||
+        subtotal !== undefined ||
+        tax !== undefined ||
+        total !== undefined ||
+        attachment !== undefined ||
+        Array.isArray(items);
+      if (attemptedNonStatusUpdate) {
+        return res.status(403).json({
+          message: "Logistics managers can only update order status.",
+        });
+      }
+      if (status === undefined) {
+        return res.status(400).json({
+          message: "Status is required for logistics updates.",
+        });
+      }
+    }
+
     // Prepare update object
     const updateData = {};
     if (status !== undefined) {
@@ -1106,9 +1244,9 @@ exports.updateOrder = async (req, res) => {
       }
       if (await isLogisticManagerRequest(req, companyId)) {
         const oldS = String(oldOrder.status || "").toLowerCase();
-        if (oldS !== "approved") {
+        if (!["approved", "hold", "partial_shipment"].includes(oldS)) {
           return res.status(403).json({
-            message: "Logistics can only update orders that are in approved status.",
+            message: "Logistics can only update orders that are in approved, hold, or partial_shipment status.",
           });
         }
         if (!LOGISTICS_STATUSES.includes(normalizedStatus)) {
@@ -1119,9 +1257,9 @@ exports.updateOrder = async (req, res) => {
       }
       if (await isCategoryManagerRequest(req, companyId)) {
         const oldS = String(oldOrder.status || "").toLowerCase();
-        if (oldS !== "pending") {
+        if (!["pending", "processing"].includes(oldS)) {
           return res.status(403).json({
-            message: "Managers can only update orders that are in pending status.",
+            message: "Managers can only update orders that are in pending or processing status.",
           });
         }
         if (!MANAGER_STATUSES.includes(normalizedStatus)) {

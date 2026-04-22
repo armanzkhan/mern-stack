@@ -32,6 +32,23 @@ interface Order {
   updatedAt: string;
   items: OrderItem[];
   notes?: string;
+  customerNotes?: string;
+  logisticsRemarks?: Array<{
+    status?: string;
+    remark: string;
+    createdAt?: string;
+    createdByEmail?: string;
+    createdByName?: string;
+  }>;
+  statusHistory?: Array<{
+    fromStatus?: string;
+    toStatus: string;
+    changedAt?: string;
+    changedByEmail?: string;
+    changedByName?: string;
+    reason?: string;
+    source?: string;
+  }>;
   attachment?: {
     fileName?: string;
     fileType?: string;
@@ -176,13 +193,14 @@ function OrdersPageContent() {
     !isCompanyAdminUser &&
     !isSuperAdminUser &&
     (isLogisticManagerRoleDetected || isLogisticManagerFallback);
+  const canDeleteOrders = isCompanyAdminUser || isSuperAdminUser;
   const managerCanChangeOrderStatus = (order: Order) => {
     if (user?.isCustomer) return false;
     const s = String(order?.status || "").toLowerCase();
     if (isCategoryManager && s === "approved") return false;
     if (isCategoryManager) return ["pending", "processing"].includes(s);
-    // Logistics: only approved orders can be moved to dispatch/hold; then locked (matches backend).
-    if (isLogisticManager) return s === "approved";
+    // Logistics: approved/hold/partial shipment are actionable; dispatch becomes read-only.
+    if (isLogisticManager) return ["approved", "hold", "partial_shipment"].includes(s);
     return true;
   };
   const managerCanEditOrder = (order: Order) => {
@@ -190,7 +208,7 @@ function OrdersPageContent() {
     const s = String(order?.status || "").toLowerCase();
     if (isCategoryManager && s === "approved") return false;
     if (isCategoryManager) return ["pending", "processing"].includes(s);
-    if (isLogisticManager) return s === "approved";
+    if (isLogisticManager) return false;
     return true;
   };
   const normalizeManagerCategory = (category: string): string =>
@@ -514,6 +532,7 @@ function OrdersPageContent() {
   const logisticsApprovedCount = displayedOrderRows.filter(({ order }) => order.status === 'approved').length;
   const logisticsDispatchCount = displayedOrderRows.filter(({ order }) => order.status === 'dispatch').length;
   const logisticsHoldCount = displayedOrderRows.filter(({ order }) => order.status === 'hold').length;
+  const logisticsPartialShipmentCount = displayedOrderRows.filter(({ order }) => order.status === 'partial_shipment').length;
 
   const uniqueOrdersCount = filteredOrders.length;
   const expandedRowsCount = displayedOrderRows.length;
@@ -521,6 +540,11 @@ function OrdersPageContent() {
 
   // Handle delete order
   const handleDeleteOrder = async (orderId: string, orderNumber: string) => {
+    if (!canDeleteOrders) {
+      setMessage("❌ You are not allowed to delete orders");
+      setTimeout(() => setMessage(""), 3000);
+      return;
+    }
     if (!confirm(`Are you sure you want to delete order ${orderNumber}?`)) return;
     
     try {
@@ -552,9 +576,14 @@ function OrdersPageContent() {
 
   // Handle edit order
   const handleEditOrder = (order: Order) => {
+    if (isLogisticManager) {
+      setMessage("❌ Logistics managers can only change order status.");
+      setTimeout(() => setMessage(""), 3000);
+      return;
+    }
     const getEditAllowedStatuses = () => {
       if (isCategoryManager) return ["processing", "rejected"];
-      if (isLogisticManager) return ["dispatch", "hold"];
+      if (isLogisticManager) return ["dispatch", "hold", "partial_shipment"];
       if (isFullStatusDropdownUser) {
         return [
           "pending",
@@ -565,13 +594,14 @@ function OrdersPageContent() {
           "allocated",
           "dispatch",
           "hold",
+          "partial_shipment",
           "dispatched",
           "shipped",
           "completed",
           "cancelled",
         ];
       }
-      return ["processing", "rejected", "dispatch", "hold"];
+      return ["processing", "rejected", "dispatch", "hold", "partial_shipment"];
     };
 
     const allowedStatuses = getEditAllowedStatuses();
@@ -781,10 +811,38 @@ function OrdersPageContent() {
   // Handle status change
   const handleStatusChange = async (orderId: string, newStatus: string) => {
     try {
-      const response = await fetch(`/api/orders/${orderId}`, {
+      let comments: string | undefined;
+      if (isLogisticManager && ["hold", "dispatch", "partial_shipment"].includes(newStatus)) {
+        const reasonPrompt =
+          newStatus === "hold"
+            ? "Enter reason for putting this order on hold:"
+            : newStatus === "dispatch"
+            ? "Enter dispatch remark/details:"
+            : "Enter partial shipment details (what is shipped / pending):";
+        const reason = window.prompt(reasonPrompt);
+        if (reason === null) return;
+        const trimmedReason = reason.trim();
+        if (!trimmedReason) {
+          setMessage(
+            newStatus === "hold"
+              ? "❌ Hold reason is required"
+              : newStatus === "dispatch"
+              ? "❌ Dispatch remark is required"
+              : "❌ Partial shipment details are required"
+          );
+          setTimeout(() => setMessage(""), 3000);
+          return;
+        }
+        comments = trimmedReason;
+      }
+
+      const response = await fetch(`/api/orders/${orderId}/status`, {
         method: 'PUT',
         headers: getAuthHeaders(),
-        body: JSON.stringify({ status: newStatus }),
+        body: JSON.stringify({
+          status: newStatus,
+          ...(comments ? { comments } : {}),
+        }),
       });
 
       if (response.ok) {
@@ -815,6 +873,7 @@ function OrdersPageContent() {
     switch (status.toLowerCase()) {
       case 'dispatch': return 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900/20 dark:text-cyan-400';
       case 'hold': return 'bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-400';
+      case 'partial_shipment': return 'bg-sky-100 text-sky-800 dark:bg-sky-900/20 dark:text-sky-400';
       case 'pending': return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400';
       case 'approved': return 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400';
       case 'rejected': return 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400';
@@ -827,9 +886,18 @@ function OrdersPageContent() {
       default: return 'bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400';
     }
   };
+  const formatStatusLabel = (status: string) =>
+    String(status || "")
+      .replace(/_/g, " ")
+      .replace(/\b\w/g, (char) => char.toUpperCase());
 
   // Open discount modal
   const openDiscountModal = (order: Order) => {
+    if (isLogisticManager) {
+      setMessage("❌ Logistics managers are not allowed to apply discounts.");
+      setTimeout(() => setMessage(""), 3000);
+      return;
+    }
     setDiscountOrder(order);
     setDiscountValue("");
     setDiscountComments("");
@@ -1004,7 +1072,7 @@ function OrdersPageContent() {
             
         {/* Stats Cards */}
         <div className="mb-4 sm:mb-6">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          <div className={`grid grid-cols-2 ${isLogisticManager ? "lg:grid-cols-5" : "lg:grid-cols-4"} gap-3 sm:gap-4`}>
             <div className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-lg shadow-lg border border-white/20 dark:border-gray-700/20 p-4 hover:shadow-xl transition-all duration-300">
               <div className="flex items-center justify-between">
                 <div className="flex-1 min-w-0">
@@ -1096,6 +1164,29 @@ function OrdersPageContent() {
                 </div>
               </div>
             </div>
+
+            {isLogisticManager && (
+              <div className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-lg shadow-lg border border-white/20 dark:border-gray-700/20 p-4 hover:shadow-xl transition-all duration-300">
+                <div className="flex items-center justify-between">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-blue-600 dark:text-blue-400">
+                      Partial Shipment
+                    </p>
+                    <p className="text-2xl font-bold text-blue-900 dark:text-blue-100 mt-1">
+                      {logisticsPartialShipmentCount}
+                    </p>
+                    <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                      Partially dispatched orders
+                    </p>
+                  </div>
+                  <div className="w-10 h-10 bg-blue-900 rounded-lg flex items-center justify-center shadow-lg flex-shrink-0">
+                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17l3-3m0 0l3-3m-3 3H3m9 0h9" />
+                    </svg>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -1135,6 +1226,7 @@ function OrdersPageContent() {
                         <>
                           <option value="dispatch">Dispatch</option>
                           <option value="hold">Hold</option>
+                          <option value="partial_shipment">Partial Shipment</option>
                         </>
                       ) : isFullStatusDropdownUser ? (
                         <>
@@ -1146,6 +1238,7 @@ function OrdersPageContent() {
                           <option value="allocated">Allocated</option>
                           <option value="dispatch">Dispatch</option>
                           <option value="hold">Hold</option>
+                          <option value="partial_shipment">Partial Shipment</option>
                           <option value="dispatched">Dispatched</option>
                           <option value="shipped">Shipped</option>
                           <option value="completed">Completed</option>
@@ -1157,6 +1250,7 @@ function OrdersPageContent() {
                           <option value="rejected">Rejected</option>
                           <option value="dispatch">Dispatch</option>
                           <option value="hold">Hold</option>
+                          <option value="partial_shipment">Partial Shipment</option>
                         </>
                       )}
                     </select>
@@ -1247,6 +1341,8 @@ function OrdersPageContent() {
                           ? "bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200"
                           : order.status === 'hold'
                           ? "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200"
+                          : order.status === 'partial_shipment'
+                          ? "bg-sky-100 text-sky-800 dark:bg-sky-900 dark:text-sky-200"
                           : 
                         order.status === 'pending'
                           ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200"
@@ -1268,7 +1364,7 @@ function OrdersPageContent() {
                           ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200"
                           : "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200"
                       }`}>
-                        {order.status}
+                        {formatStatusLabel(order.status)}
                       </span>
 
                       {order.attachment?.dataUrl && (
@@ -1407,10 +1503,10 @@ function OrdersPageContent() {
                         </span>
                       </div>
                     )}
-                    {isLogisticManager && !managerCanChangeOrderStatus(order) && ["dispatch", "hold"].includes(String(order?.status || "").toLowerCase()) && (
+                    {isLogisticManager && !managerCanChangeOrderStatus(order) && ["dispatch", "hold", "partial_shipment"].includes(String(order?.status || "").toLowerCase()) && (
                       <div className="flex justify-center">
                         <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${getStatusColor(order.status)}`}>
-                          {String(order.status).charAt(0).toUpperCase() + String(order.status).slice(1)} (locked)
+                          {formatStatusLabel(order.status)} (locked)
                         </span>
                       </div>
                     )}
@@ -1420,7 +1516,7 @@ function OrdersPageContent() {
                           <select
                             value={
                               // Category managers: only Processing / Rejected in UI; use placeholder unless rejected.
-                              // Logistic managers: only Dispatch / Hold; use placeholder unless one of those.
+                              // Logistic managers: only Dispatch / Hold / Partial Shipment; use placeholder unless one of those.
                               // Company admins: reflect the real order.status in the full list.
                               // Other staff: placeholder unless rejected (Processing + Rejected + Dispatch + Hold options).
                               (() => {
@@ -1429,7 +1525,7 @@ function OrdersPageContent() {
                                   return s === "rejected" ? "rejected" : "";
                                 }
                                 if (isLogisticManager) {
-                                  return ["dispatch", "hold"].includes(s) ? s : "";
+                                  return ["dispatch", "hold", "partial_shipment"].includes(s) ? s : "";
                                 }
                                 if (isFullStatusDropdownUser) {
                                   return s;
@@ -1460,6 +1556,7 @@ function OrdersPageContent() {
                                 </option>
                                 <option value="dispatch">Dispatch</option>
                                 <option value="hold">Hold</option>
+                                <option value="partial_shipment">Partial Shipment</option>
                               </>
                             ) : isFullStatusDropdownUser ? (
                               <>
@@ -1471,6 +1568,7 @@ function OrdersPageContent() {
                                 <option value="allocated">Allocated</option>
                                 <option value="dispatch">Dispatch</option>
                                 <option value="hold">Hold</option>
+                                <option value="partial_shipment">Partial Shipment</option>
                                 <option value="dispatched">Dispatched</option>
                                 <option value="shipped">Shipped</option>
                                 <option value="completed">Completed</option>
@@ -1594,17 +1692,19 @@ function OrdersPageContent() {
                               </svg>
                             </button>
                           </PermissionGate>
-                          <PermissionGate permission="orders.delete">
-                            <button 
-                              onClick={() => handleDeleteOrder(order._id, order.orderNumber)}
-                              className="p-2 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors"
-                              title="Delete Order"
-                            >
-                              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                              </svg>
-                            </button>
-                          </PermissionGate>
+                          {canDeleteOrders && (
+                            <PermissionGate permission="orders.delete">
+                              <button 
+                                onClick={() => handleDeleteOrder(order._id, order.orderNumber)}
+                                className="p-2 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors"
+                                title="Delete Order"
+                              >
+                                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                              </button>
+                            </PermissionGate>
+                          )}
                         </>
                       )}
                     </div>
@@ -1711,7 +1811,7 @@ function OrdersPageContent() {
                 <div>
                   <h4 className="font-medium text-blue-900 dark:text-white mb-2">Order Information</h4>
                   <div className="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
-                    <p className="text-sm"><strong>Status:</strong> <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${getStatusColor(selectedOrder?.status || '')}`}>{selectedOrder?.status}</span></p>
+                    <p className="text-sm"><strong>Status:</strong> <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${getStatusColor(selectedOrder?.status || '')}`}>{formatStatusLabel(selectedOrder?.status || '')}</span></p>
                     <p className="text-sm"><strong>Total:</strong> PKR {(() => {
                       const order = selectedOrder;
                       if (!order) return '0';
@@ -1727,7 +1827,41 @@ function OrdersPageContent() {
                       return '0';
                     })()}</p>
                     <p className="text-sm"><strong>Date:</strong> {selectedOrder?.orderDate ? new Date(selectedOrder.orderDate).toLocaleDateString() : 'N/A'}</p>
-                    {selectedOrder?.notes && <p className="text-sm"><strong>Notes:</strong> {selectedOrder.notes}</p>}
+                    {(selectedOrder?.customerNotes || selectedOrder?.notes) && (
+                      <p className="text-sm">
+                        <strong>Customer Notes:</strong> {selectedOrder.customerNotes || selectedOrder.notes}
+                      </p>
+                    )}
+                    {Array.isArray(selectedOrder?.logisticsRemarks) && selectedOrder.logisticsRemarks.length > 0 && (
+                      <div className="mt-2">
+                        <p className="text-sm font-semibold">Logistics Remarks:</p>
+                        <div className="mt-1 space-y-1">
+                          {selectedOrder.logisticsRemarks.map((entry, idx) => (
+                            <p key={`logistics-remark-${idx}`} className="text-sm text-gray-700 dark:text-gray-300">
+                              [{formatStatusLabel(String(entry.status || "status"))}] {entry.remark}
+                              {entry.createdByName || entry.createdByEmail ? ` — ${entry.createdByName || entry.createdByEmail}` : ""}
+                              {entry.createdAt ? ` @ ${new Date(entry.createdAt).toLocaleString()}` : ""}
+                            </p>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {Array.isArray(selectedOrder?.statusHistory) && selectedOrder.statusHistory.length > 0 && (
+                      <div className="mt-2">
+                        <p className="text-sm font-semibold">Status History:</p>
+                        <div className="mt-1 space-y-1">
+                          {selectedOrder.statusHistory.map((entry, idx) => (
+                            <p key={`status-history-${idx}`} className="text-sm text-gray-700 dark:text-gray-300">
+                              {entry.fromStatus ? `${formatStatusLabel(entry.fromStatus)} -> ` : ""}
+                              {formatStatusLabel(entry.toStatus)}
+                              {entry.changedByName || entry.changedByEmail ? ` by ${entry.changedByName || entry.changedByEmail}` : ""}
+                              {entry.changedAt ? ` @ ${new Date(entry.changedAt).toLocaleString()}` : ""}
+                              {entry.reason ? ` | Reason: ${entry.reason}` : ""}
+                            </p>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                     {selectedOrder?.attachment?.dataUrl && (
                       <div className="mt-3 rounded-lg border border-blue-200 bg-blue-50 p-3 dark:border-blue-900/40 dark:bg-blue-900/20">
                         <p className="text-sm font-semibold text-blue-900 dark:text-blue-200">Attachment</p>
@@ -1944,6 +2078,7 @@ function OrdersPageContent() {
                       <>
                         <option value="dispatch">Dispatch</option>
                         <option value="hold">Hold</option>
+                        <option value="partial_shipment">Partial Shipment</option>
                       </>
                     ) : isFullStatusDropdownUser ? (
                       <>
@@ -1955,6 +2090,7 @@ function OrdersPageContent() {
                         <option value="allocated">Allocated</option>
                         <option value="dispatch">Dispatch</option>
                         <option value="hold">Hold</option>
+                        <option value="partial_shipment">Partial Shipment</option>
                         <option value="dispatched">Dispatched</option>
                         <option value="shipped">Shipped</option>
                         <option value="completed">Completed</option>
@@ -1966,6 +2102,7 @@ function OrdersPageContent() {
                         <option value="rejected">Rejected</option>
                         <option value="dispatch">Dispatch</option>
                         <option value="hold">Hold</option>
+                        <option value="partial_shipment">Partial Shipment</option>
                       </>
                     )}
                   </select>

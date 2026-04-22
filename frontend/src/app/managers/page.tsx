@@ -73,6 +73,14 @@ interface ManagerProduct {
 }
 
 function ManagersPage() {
+  const normalizeCategoryKey = (value: string): string =>
+    String(value || "")
+      .toLowerCase()
+      .replace(/&/g, "and")
+      .replace(/speciality/g, "specialty")
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim();
+
   const [managers, setManagers] = useState<Manager[]>([]);
   const [managerOrders, setManagerOrders] = useState<ManagerOrder[]>([]);
   const [managerProducts, setManagerProducts] = useState<ManagerProduct[]>([]);
@@ -214,37 +222,56 @@ function ManagersPage() {
   const fetchCategories = async () => {
     try {
       const token = localStorage.getItem("token");
-      const response = await fetch('/api/products/categories?type=main', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
+      const [categoriesResponse, productsResponse] = await Promise.all([
+        fetch('/api/product-categories?includeInactive=true', {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        }),
+        fetch('/api/products?limit=2000', {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        }),
+      ]);
 
-      if (response.ok) {
-        const categories = await response.json();
-        
-        // Allowed categories for manager assignment
-        const allowedCategories = [
-          'Building Care & Maintenance',
-          'Concrete Admixtures',
-          'Decorative Concrete',
-          'Dry Mix Mortars / Premix Plasters',
-          'Epoxy Adhesives and Coatings',
-          'Epoxy Floorings & Coatings',
-          'Specialty Products',
-          'Tiling and Grouting Materials'
-        ];
-        
-        // Filter to only show allowed categories
-        const processedCategories = categories
-          .map((cat: any) => {
-            const categoryName = cat.name || cat.mainCategory || cat;
-            return typeof categoryName === 'string' ? categoryName : categoryName;
-          })
-          .filter((catName: string) => allowedCategories.includes(catName));
-        
-        setAvailableCategories(processedCategories);
+      if (categoriesResponse.ok) {
+        const categoriesData = await categoriesResponse.json();
+        const allCategories = Array.isArray(categoriesData) ? categoriesData : categoriesData.categories || [];
+        const productsData = productsResponse.ok ? await productsResponse.json() : [];
+        const products = Array.isArray(productsData) ? productsData : productsData.products || [];
+
+        const activeMainCategoriesWithProducts = new Set(
+          products
+            .map((product: any) => normalizeCategoryKey(String(product?.category?.mainCategory || "").trim()))
+            .filter(Boolean)
+        );
+
+        const activeMainCategories = allCategories.filter((category: any) => {
+          const categoryName = String(category?.name || category?.mainCategory || "").trim();
+          const isMainLevel = Number(category?.level) === 1 || !category?.parent;
+          const isActive = category?.isActive !== false;
+          return (
+            Boolean(categoryName) &&
+            isMainLevel &&
+            isActive &&
+            activeMainCategoriesWithProducts.has(normalizeCategoryKey(categoryName))
+          );
+        });
+
+        const dedupeMap = new Map<string, string>();
+        activeMainCategories.forEach((category: any) => {
+          const categoryName = String(category?.name || category?.mainCategory || "").trim();
+          const key = normalizeCategoryKey(categoryName);
+          if (categoryName && !dedupeMap.has(key)) {
+            dedupeMap.set(key, categoryName);
+          }
+        });
+        const dedupedCategories: string[] = [...dedupeMap.values()].sort((a, b) => a.localeCompare(b));
+
+        setAvailableCategories(dedupedCategories);
       }
     } catch (error) {
       console.error('Error fetching categories:', error);
@@ -425,17 +452,42 @@ function ManagersPage() {
     
     try {
       const token = localStorage.getItem("token");
-      
-      // Prepare update data - only send necessary fields
+
+      // Keep category updates on the dedicated endpoint used elsewhere.
+      const categories = (editingManager.assignedCategories && Array.isArray(editingManager.assignedCategories)
+        ? editingManager.assignedCategories
+        : []
+      ).map((categoryItem) => {
+        if (typeof categoryItem === 'string') return categoryItem;
+        return (categoryItem as any)?.category || String(categoryItem || '');
+      }).filter(Boolean);
+
+      const assignCategoriesResponse = await fetch('/api/managers/assign-categories', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          managerId: editingManager._id,
+          categories
+        }),
+      });
+
+      if (!assignCategoriesResponse.ok) {
+        const errorData = await assignCategoriesResponse.json().catch(() => ({}));
+        setMessage(`❌ Failed to update manager categories: ${errorData.message || errorData.error || 'Unknown error'}`);
+        setTimeout(() => setMessage(""), 3000);
+        return;
+      }
+
+      // Update non-category fields through manager update endpoint.
       const updateData = {
         managerLevel: editingManager.managerLevel || 'junior',
         isActive: editingManager.isActive !== undefined ? editingManager.isActive : true,
-        assignedCategories: editingManager.assignedCategories && Array.isArray(editingManager.assignedCategories)
-          ? editingManager.assignedCategories
-          : []
       };
-      
-      const response = await fetch(`/api/managers/${editingManager._id}`, {
+
+      const managerUpdateResponse = await fetch(`/api/managers/${editingManager._id}`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -444,17 +496,19 @@ function ManagersPage() {
         body: JSON.stringify(updateData),
       });
 
-      if (response.ok) {
-        setMessage("✅ Manager updated successfully!");
+      if (!managerUpdateResponse.ok) {
+        const errorData = await managerUpdateResponse.json().catch(() => ({}));
+        setMessage(`❌ Categories saved, but manager status update failed: ${errorData.message || errorData.error || 'Unknown error'}`);
+        setTimeout(() => setMessage(""), 4000);
         await fetchManagers();
-        setShowEditModal(false);
-        setEditingManager(null);
-        setTimeout(() => setMessage(""), 3000);
-      } else {
-        const errorData = await response.json();
-        setMessage(`❌ Failed to update manager: ${errorData.message}`);
-        setTimeout(() => setMessage(""), 3000);
+        return;
       }
+
+      setMessage("✅ Manager updated successfully!");
+      await fetchManagers();
+      setShowEditModal(false);
+      setEditingManager(null);
+      setTimeout(() => setMessage(""), 3000);
     } catch (error) {
       console.error('Error updating manager:', error);
       setMessage("❌ Error updating manager");
@@ -595,47 +649,7 @@ function ManagersPage() {
     return matchesSearch && matchesCategory && matchesStatus;
   });
 
-  // Allowed main categories (8 actual categories)
-  const allowedMainCategories = [
-    'Building Care & Maintenance',
-    'Concrete Admixtures',
-    'Decorative Concrete',
-    'Dry Mix Mortars / Premix Plasters',
-    'Epoxy Adhesives and Coatings',
-    'Epoxy Floorings & Coatings',
-    'Specialty Products',
-    'Tiling and Grouting Materials'
-  ];
-
-  // Get unique categories from managers, but only include the 8 main categories
-  const allManagerCategories = [...new Set(managers.flatMap(m => 
-    (m?.assignedCategories && Array.isArray(m.assignedCategories)) 
-      ? m.assignedCategories.map(categoryItem => {
-          const categoryName = typeof categoryItem === 'string' 
-            ? categoryItem 
-            : (categoryItem as any)?.category || categoryItem;
-          return categoryName;
-        })
-      : []
-  ))];
-
-  // Filter to only show the 8 main categories (normalize for matching)
-  const normalizeCategory = (cat: string): string => {
-    if (!cat || typeof cat !== 'string') return '';
-    return cat.toLowerCase().trim()
-      .replace(/\s*&\s*/g, ' and ')
-      .replace(/\s+/g, ' ');
-  };
-
-  const managerCategories = allowedMainCategories.filter(allowedCat => {
-    const normalizedAllowed = normalizeCategory(allowedCat);
-    return allManagerCategories.some(managerCat => {
-      const normalizedManager = normalizeCategory(managerCat);
-      return normalizedAllowed === normalizedManager || 
-             normalizedManager.includes(normalizedAllowed) ||
-             normalizedAllowed.includes(normalizedManager);
-    });
-  });
+  const managerCategories = availableCategories;
 
   // Get status counts
   const statusCounts = {

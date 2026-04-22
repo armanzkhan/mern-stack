@@ -43,6 +43,7 @@ interface Category {
 interface OrderItem {
   product: Product;
   quantity: number;
+  unitPrice: number;
   price: number;
   tdsLink?: string;
   selectedCategory?: string; // Category filter for this item
@@ -259,6 +260,7 @@ export default function CreateOrderPage() {
       user?.userType === "customer" ||
       String(user?.role || "").toLowerCase() === "customer"
     );
+  const canEditUnitPrice = !isCustomerSession;
 
   // Prefetch neighbor route to reduce transition latency.
   useEffect(() => {
@@ -410,10 +412,8 @@ export default function CreateOrderPage() {
 
   /**
    * Categories shown in the Order Items "Category" dropdown.
-   * Previously this was only {@link getUniqueCategories} (categories that already have products),
-   * so customers saw fewer options than their manager's assigned count (e.g. 6 vs 8).
-   * We merge assigned manager categories with product-derived categories so all allowed
-   * categories appear; empty categories still show "no products" in the product picker.
+   * For customers, keep this strict to assigned manager categories only.
+   * For non-customers, merge manager/profile categories with product-derived categories.
    */
   const getCategoryOptionsForDropdown = (): string[] => {
     const fromProducts = getUniqueCategories();
@@ -421,7 +421,7 @@ export default function CreateOrderPage() {
     if (user?.userType === "customer" || user?.isCustomer) {
       if (customerManagerCategories.length > 0) {
         return dedupeCategoryDropdownLabels(
-          [...customerManagerCategories, ...fromProducts],
+          [...customerManagerCategories],
           fromProducts
         );
       }
@@ -1156,6 +1156,7 @@ export default function CreateOrderPage() {
         items: [...prev.items, { 
           product: firstProduct, 
           quantity: 1, 
+          unitPrice: firstProduct?.price || 0,
           price: firstProduct?.price || 0,
           tdsLink: "",
           selectedCategory: initialCategory
@@ -1224,7 +1225,8 @@ export default function CreateOrderPage() {
           return {
             ...item,
             product: value,
-            price: value.price,
+            unitPrice: value.price,
+            price: Number(value.price || 0) * Number(item.quantity || 1),
             tdsLink: value.tdsLink || item.tdsLink || "",
             selectedCategory: nextSelectedCategory || item.selectedCategory || "",
           };
@@ -1238,7 +1240,13 @@ export default function CreateOrderPage() {
       items: prev.items.map((item, i) => {
         if (i === index) {
           if (field === 'quantity') {
-            return { ...item, quantity: value, price: item.product.price * value };
+            const nextQuantity = Math.max(1, Number(value || 1));
+            const unitPrice = Number(item.unitPrice ?? item.product.price ?? 0);
+            return { ...item, quantity: nextQuantity, price: unitPrice * nextQuantity };
+          } else if (field === 'unitPrice') {
+            const nextUnitPrice = Math.max(0, Number(value || 0));
+            const nextQuantity = Math.max(1, Number(item.quantity || 1));
+            return { ...item, unitPrice: nextUnitPrice, price: nextUnitPrice * nextQuantity };
           } else if (field === 'tdsLink') {
             // When TDS link changes, save it to the product in database in real-time (debounced)
             if (item.product._id) {
@@ -1274,6 +1282,7 @@ export default function CreateOrderPage() {
                 ...item,
                 selectedCategory: value,
                 product: firstProduct,
+                unitPrice: firstProduct.price,
                 price: firstProduct.price,
                 quantity: 1,
                 tdsLink: firstProduct.tdsLink || ""
@@ -1469,8 +1478,8 @@ export default function CreateOrderPage() {
         items: formData.items.map(item => ({
           product: item.product._id,
           quantity: item.quantity,
-          unitPrice: item.product.price,
-          total: item.product.price * item.quantity,
+          unitPrice: Number(item.unitPrice ?? item.product.price ?? 0),
+          total: Number(item.unitPrice ?? item.product.price ?? 0) * Number(item.quantity || 1),
           tdsLink: item.tdsLink || ""
         })),
         subtotal: subtotal,
@@ -2101,9 +2110,20 @@ export default function CreateOrderPage() {
                           <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
                             Unit Price
                           </label>
-                          <div className="rounded-lg border border-stroke bg-gray-50 px-4 py-3 text-dark dark:border-dark-3 dark:bg-dark-2 dark:text-white">
-                            PKR {item.product?.price?.toLocaleString() || '0'}
-                          </div>
+                          {canEditUnitPrice ? (
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={Number(item.unitPrice || 0)}
+                              onChange={(e) => updateItem(index, 'unitPrice', Number(e.target.value))}
+                              className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 text-dark focus:border-primary focus:outline-none dark:border-dark-3 dark:bg-dark-2 dark:text-white transition-colors"
+                            />
+                          ) : (
+                            <div className="rounded-lg border border-stroke bg-gray-50 px-4 py-3 text-dark dark:border-dark-3 dark:bg-dark-2 dark:text-white">
+                              PKR {Number(item.unitPrice || item.product?.price || 0).toLocaleString()}
+                            </div>
+                          )}
                         </div>
                         
                         {/* Quantity Input */}
