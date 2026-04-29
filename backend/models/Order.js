@@ -5,6 +5,8 @@ const orderItemSchema = new mongoose.Schema(
     product: { type: mongoose.Schema.Types.ObjectId, ref: "Product", required: true },
     quantity: { type: Number, required: true, min: 1 },
     unitPrice: { type: Number, required: true, min: 0 },
+    deliveryCharges: { type: Number, default: 0, min: 0 },
+    biltyCharges: { type: Number, default: 0, min: 0 },
     total: { type: Number, required: true, min: 0 },
     tdsLink: { type: String }, // TDS (Tax Deducted at Source) document link for this product
   },
@@ -24,6 +26,8 @@ const orderSchema = new mongoose.Schema(
     items: [orderItemSchema],
     subtotal: { type: Number, required: true },
     tax: { type: Number, default: 0 },
+    deliveryCharges: { type: Number, default: 0 },
+    biltyCharges: { type: Number, default: 0 },
     total: { type: Number, required: true },
     totalDiscount: { type: Number, default: 0 },
     finalTotal: { type: Number },
@@ -32,6 +36,13 @@ const orderSchema = new mongoose.Schema(
     logisticsRemarks: [{
       status: { type: String },
       remark: { type: String, required: true },
+      partialShipmentItems: [{
+        productId: { type: mongoose.Schema.Types.ObjectId, ref: "Product" },
+        productName: { type: String },
+        orderedQuantity: { type: Number, min: 0 },
+        shippedQuantity: { type: Number, min: 0 },
+        remainingQuantity: { type: Number, min: 0 },
+      }],
       createdAt: { type: Date, default: Date.now },
       createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
       createdByEmail: { type: String },

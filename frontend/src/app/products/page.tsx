@@ -77,6 +77,17 @@ export default function ProductsPage() {
   const [priceHistory, setPriceHistory] = useState<PriceHistoryEntry[]>([]);
   const [priceHistoryLoading, setPriceHistoryLoading] = useState(false);
   const router = useRouter();
+
+  const handleExpiredSession = (reason?: string) => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("refreshToken");
+    localStorage.removeItem("userType");
+    localStorage.removeItem("userRole");
+    setMessage(reason || "❌ Session expired. Redirecting to sign in...");
+    setTimeout(() => {
+      router.push("/auth/sign-in");
+    }, 1200);
+  };
   const fetchPriceHistory = async (productId: string) => {
     try {
       setPriceHistoryLoading(true);
@@ -144,6 +155,12 @@ export default function ProductsPage() {
         console.log('   Products fetched:', products.length);
         setProducts(products);
       } else {
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage = String(errorData?.error || errorData?.message || "");
+        if (response.status === 403 && /expired|invalid token|unauthorized/i.test(errorMessage)) {
+          handleExpiredSession("❌ Session expired. Please sign in again.");
+          return;
+        }
         console.error('Failed to fetch products:', response.status, response.statusText);
         setMessage("❌ Failed to fetch products");
         setTimeout(() => setMessage(""), 3000);
@@ -199,9 +216,14 @@ export default function ProductsPage() {
 
   // Filter products
   const filteredProducts = products.filter(product => {
-    const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         product.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         product.sku.toLowerCase().includes(searchTerm.toLowerCase());
+    const searchLower = searchTerm.toLowerCase();
+    const name = String(product?.name || "").toLowerCase();
+    const description = String(product?.description || "").toLowerCase();
+    const sku = String(product?.sku || "").toLowerCase();
+    const matchesSearch =
+      name.includes(searchLower) ||
+      description.includes(searchLower) ||
+      sku.includes(searchLower);
     
     const productCategory = typeof product.category === 'string' 
       ? product.category 
@@ -257,6 +279,10 @@ export default function ProductsPage() {
       } else {
         const errorData = await response.json().catch(() => ({}));
         const errorMessage = errorData?.error || errorData?.message || "Failed to save product";
+        if (response.status === 403 && /expired|invalid token|unauthorized/i.test(String(errorMessage))) {
+          handleExpiredSession("❌ Session expired. Please sign in again.");
+          return;
+        }
         setMessage(`❌ ${errorMessage}`);
       }
     } catch (error) {
@@ -310,8 +336,13 @@ export default function ProductsPage() {
         await fetchProducts();
         setTimeout(() => setMessage(""), 3000);
       } else {
-        const errorData = await response.text();
-        setMessage(`❌ Failed to delete product: ${errorData}`);
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage = String(errorData?.error || errorData?.message || "Failed to delete product");
+        if (response.status === 403 && /expired|invalid token|unauthorized/i.test(errorMessage)) {
+          handleExpiredSession("❌ Session expired. Please sign in again.");
+          return;
+        }
+        setMessage(`❌ Failed to delete product: ${errorMessage}`);
         setTimeout(() => setMessage(""), 5000);
       }
     } catch (error) {

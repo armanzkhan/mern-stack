@@ -36,6 +36,13 @@ interface Order {
   logisticsRemarks?: Array<{
     status?: string;
     remark: string;
+    partialShipmentItems?: Array<{
+      productId?: string;
+      productName?: string;
+      orderedQuantity?: number;
+      shippedQuantity?: number;
+      remainingQuantity?: number;
+    }>;
     createdAt?: string;
     createdByEmail?: string;
     createdByName?: string;
@@ -73,11 +80,40 @@ interface OrderItem {
     _id: string;
     name: string;
     price: number;
+    tdsLink?: string;
     category?: any;
   };
   quantity: number;
   unitPrice: number;
+  deliveryCharges?: number;
+  biltyCharges?: number;
   total: number;
+  tdsLink?: string;
+  selectedCategory?: string;
+  productSearch?: string;
+}
+
+const calculateOrderItemTotal = (item: Partial<OrderItem>) => {
+  const quantity = Math.max(1, Number(item?.quantity || 1));
+  const unitPrice = Math.max(0, Number(item?.unitPrice || 0));
+  const deliveryCharges = Math.max(0, Number(item?.deliveryCharges || 0));
+  const biltyCharges = Math.max(0, Number(item?.biltyCharges || 0));
+  return quantity * unitPrice + deliveryCharges + biltyCharges;
+};
+
+interface PartialShipmentDraftItem {
+  productId: string;
+  productName: string;
+  orderedQuantity: number;
+  shippedQuantity: number;
+}
+
+interface DispatchDraftItem {
+  productId: string;
+  productName: string;
+  orderedQuantity: number;
+  shippedQuantity: number;
+  remainingQuantity: number;
 }
 
 function OrdersPageContent() {
@@ -108,8 +144,21 @@ function OrdersPageContent() {
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [invoiceOrder, setInvoiceOrder] = useState<Order | null>(null);
   const [invoiceLoading, setInvoiceLoading] = useState(false);
+  const [showPartialShipmentModal, setShowPartialShipmentModal] = useState(false);
+  const [partialShipmentOrderId, setPartialShipmentOrderId] = useState<string | null>(null);
+  const [partialShipmentDraftItems, setPartialShipmentDraftItems] = useState<PartialShipmentDraftItem[]>([]);
+  const [partialShipmentNote, setPartialShipmentNote] = useState("");
+  const [showDispatchModal, setShowDispatchModal] = useState(false);
+  const [dispatchOrderId, setDispatchOrderId] = useState<string | null>(null);
+  const [dispatchDraftItems, setDispatchDraftItems] = useState<DispatchDraftItem[]>([]);
+  const [dispatchNote, setDispatchNote] = useState("");
+  const [showHoldModal, setShowHoldModal] = useState(false);
+  const [holdOrderId, setHoldOrderId] = useState<string | null>(null);
+  const [holdReason, setHoldReason] = useState("");
   const [orderInvoices, setOrderInvoices] = useState<{[key: string]: any[]}>({});
   const [expandByManager, setExpandByManager] = useState(false);
+  const [editableProducts, setEditableProducts] = useState<OrderItem["product"][]>([]);
+  const [loadingEditableProducts, setLoadingEditableProducts] = useState(false);
   const lastAutoRefreshAtRef = useRef(0);
   const isFetchingOrdersRef = useRef(false);
   const fetchedInvoiceOrderNumbersRef = useRef<Set<string>>(new Set());
@@ -193,7 +242,6 @@ function OrdersPageContent() {
     !isCompanyAdminUser &&
     !isSuperAdminUser &&
     (isLogisticManagerRoleDetected || isLogisticManagerFallback);
-  const canDeleteOrders = isCompanyAdminUser || isSuperAdminUser;
   const managerCanChangeOrderStatus = (order: Order) => {
     if (user?.isCustomer) return false;
     const s = String(order?.status || "").toLowerCase();
@@ -245,6 +293,89 @@ function OrdersPageContent() {
           normalizedProductCategory.includes(managerCat) ||
           managerCat.includes(normalizedProductCategory)
       );
+  };
+  const managerAllowedCategoryOptions = managerAssignedCategoryStrings
+    .map((cat) => normalizeManagerCategory(cat))
+    .filter(Boolean);
+  const categoryTokens = (value: string): string[] =>
+    String(value || "")
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, " ")
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((token) => (token.length > 3 && token.endsWith("s") ? token.slice(0, -1) : token));
+  const categoriesEquivalent = (left: string, right: string): boolean => {
+    const l = normalizeManagerCategory(left);
+    const r = normalizeManagerCategory(right);
+    if (!l || !r) return false;
+    if (l === r || l.includes(r) || r.includes(l)) return true;
+    const leftTokens = new Set(categoryTokens(l));
+    const rightTokens = new Set(categoryTokens(r));
+    let overlap = 0;
+    rightTokens.forEach((token) => {
+      if (leftTokens.has(token)) overlap += 1;
+    });
+    const minRequired = Math.max(2, Math.min(leftTokens.size, rightTokens.size) - 1);
+    return overlap >= minRequired;
+  };
+  const getProductCategoryLabel = (product: OrderItem["product"] | undefined): string => {
+    if (!product?.category) return "";
+    if (typeof product.category === "string") return product.category;
+    return String(product.category?.mainCategory || product.category?.subCategory || "");
+  };
+  const addableProductsForCurrentUser = !isCategoryManager
+    ? editableProducts
+    : editableProducts.filter((product) => {
+        const productCategoryRaw =
+          typeof product?.category === "string"
+            ? product.category
+            : product?.category?.mainCategory || "";
+        const normalizedProductCategory = normalizeManagerCategory(String(productCategoryRaw || ""));
+        if (!normalizedProductCategory) return false;
+        return managerAllowedCategoryOptions.some(
+          (managerCat) =>
+            categoriesEquivalent(normalizedProductCategory, managerCat)
+        );
+      });
+  const getItemProductPool = (item: OrderItem) => {
+    const basePool = isCategoryManager && !item._id ? addableProductsForCurrentUser : editableProducts;
+    const selectedCategory = String(item.selectedCategory || "").trim();
+    const categoryFiltered = !selectedCategory
+      ? basePool
+      : basePool.filter((product) => {
+          const normalizedProductCategory = normalizeManagerCategory(getProductCategoryLabel(product));
+          if (!normalizedProductCategory) return false;
+          return categoriesEquivalent(normalizedProductCategory, selectedCategory);
+        });
+    const productSearch = String(item.productSearch || "").toLowerCase().trim();
+    if (!productSearch) return categoryFiltered;
+    return categoryFiltered.filter((product) => {
+      const productName = String(product.name || "").toLowerCase();
+      return productName.includes(productSearch);
+    });
+  };
+  const categoryOptionsForCurrentUser = isCategoryManager
+    ? Array.from(new Set(managerAssignedCategoryStrings.filter(Boolean))).sort((a, b) =>
+        a.localeCompare(b)
+      )
+    : Array.from(
+        new Set(
+          addableProductsForCurrentUser
+            .map((product) => getProductCategoryLabel(product))
+            .filter(Boolean)
+        )
+      ).sort((a, b) => a.localeCompare(b));
+  const canAddOrRemoveItems = true;
+  const canCategoryManagerRemoveItems = false;
+  const getProductPoolWithoutSearch = (item: OrderItem) => {
+    const basePool = isCategoryManager && !item._id ? addableProductsForCurrentUser : editableProducts;
+    const selectedCategory = String(item.selectedCategory || "").trim();
+    if (!selectedCategory) return basePool;
+    return basePool.filter((product) => {
+      const normalizedProductCategory = normalizeManagerCategory(getProductCategoryLabel(product));
+      if (!normalizedProductCategory) return false;
+      return categoriesEquivalent(normalizedProductCategory, selectedCategory);
+    });
   };
 
   // Fetch invoices for orders
@@ -538,36 +669,6 @@ function OrdersPageContent() {
   const expandedRowsCount = displayedOrderRows.length;
   const overlapCount = Math.max(0, expandedRowsCount - uniqueOrdersCount);
 
-  // Handle delete order
-  const handleDeleteOrder = async (orderId: string, orderNumber: string) => {
-    if (!canDeleteOrders) {
-      setMessage("❌ You are not allowed to delete orders");
-      setTimeout(() => setMessage(""), 3000);
-      return;
-    }
-    if (!confirm(`Are you sure you want to delete order ${orderNumber}?`)) return;
-    
-    try {
-      const response = await fetch(`/api/orders/${orderId}`, {
-        method: 'DELETE',
-        headers: getAuthHeaders(),
-      });
-      
-      if (response.ok) {
-        setMessage("✅ Order deleted successfully!");
-        await fetchOrders();
-        setTimeout(() => setMessage(""), 3000);
-      } else {
-        setMessage("❌ Failed to delete order");
-        setTimeout(() => setMessage(""), 3000);
-      }
-    } catch (error) {
-      console.error('Error deleting order:', error);
-      setMessage("❌ Error deleting order");
-      setTimeout(() => setMessage(""), 3000);
-    }
-  };
-
   // Handle view order
   const handleViewOrder = (order: Order) => {
     setSelectedOrder(order);
@@ -621,39 +722,173 @@ function OrdersPageContent() {
       attachment: order.attachment || null,
       items: (order.items || []).map((item) => ({
         ...item,
+        selectedCategory:
+          typeof item.product?.category === "string"
+            ? item.product.category
+            : String(item.product?.category?.mainCategory || ""),
+        productSearch: String(item.product?.name || ""),
         quantity: Number(item.quantity || 1),
         unitPrice: Number(item.unitPrice || item.product?.price || 0),
-        total: Number(item.total || (Number(item.quantity || 1) * Number(item.unitPrice || item.product?.price || 0))),
+        deliveryCharges: Number(item.deliveryCharges || 0),
+        biltyCharges: Number(item.biltyCharges || 0),
+        total: Number(item.total || calculateOrderItemTotal(item)),
       })),
       total: order.total,
       subtotal: order.subtotal,
       tax: order.tax
     });
     setShowEditModal(true);
+    void fetchEditableProducts();
+  };
+
+  const fetchEditableProducts = async () => {
+    if (editableProducts.length > 0 || loadingEditableProducts) return;
+    try {
+      setLoadingEditableProducts(true);
+      const pageSize = 500;
+      const response = await fetch(`/api/products?limit=${pageSize}&page=1&meta=1`, {
+        headers: getAuthHeaders(),
+      });
+      if (!response.ok) {
+        if (handleAuthError(response.status, "Please log in to manage orders")) {
+          return;
+        }
+        return;
+      }
+      const raw = await response.json();
+      const firstRows = Array.isArray(raw)
+        ? raw
+        : Array.isArray(raw?.products)
+          ? raw.products
+          : [];
+      const totalPages = Math.max(1, Number(raw?.pagination?.totalPages || 1));
+      const mergedRows = [...firstRows];
+      for (let page = 2; page <= totalPages; page++) {
+        const pageRes = await fetch(`/api/products?limit=${pageSize}&page=${page}&meta=1`, {
+          headers: getAuthHeaders(),
+        });
+        if (!pageRes.ok) break;
+        const pageRaw = await pageRes.json();
+        const pageRows = Array.isArray(pageRaw)
+          ? pageRaw
+          : Array.isArray(pageRaw?.products)
+            ? pageRaw.products
+            : [];
+        if (pageRows.length === 0) break;
+        mergedRows.push(...pageRows);
+      }
+      const normalized = mergedRows
+        .map((p: any) => ({
+          _id: String(p?._id || ""),
+          name: String(p?.name || "Unnamed Product"),
+          price: Number(p?.price || 0),
+          tdsLink: String(p?.tdsLink || ""),
+          category: p?.category,
+        }))
+        .filter((p: OrderItem["product"]) => Boolean(p._id));
+      setEditableProducts(normalized);
+    } catch (error) {
+      console.error("Error fetching product options for edit modal:", error);
+    } finally {
+      setLoadingEditableProducts(false);
+    }
   };
 
   const updateEditingItem = (
     itemIndex: number,
-    field: "quantity" | "unitPrice",
-    rawValue: string
+    field: "quantity" | "unitPrice" | "deliveryCharges" | "biltyCharges" | "product" | "tdsLink" | "selectedCategory" | "productSearch",
+    rawValue: string | OrderItem["product"]
   ) => {
-    const numericValue = Number(rawValue);
     setEditingOrder((prev) => {
       const existingItems = Array.isArray(prev.items) ? [...prev.items] : [];
       if (!existingItems[itemIndex]) return prev;
 
       const item = { ...existingItems[itemIndex] };
-      if (field === "quantity") {
-        item.quantity = Number.isFinite(numericValue) ? Math.max(1, Math.round(numericValue)) : 1;
+      if (field === "product") {
+        const selectedProduct = rawValue as OrderItem["product"];
+        const quantity = Math.max(1, Number(item.quantity || 1));
+        item.product = selectedProduct;
+        item.selectedCategory = getProductCategoryLabel(selectedProduct);
+        item.productSearch = String(selectedProduct?.name || "");
+        item.unitPrice = Number(selectedProduct?.price || 0);
+        item.tdsLink = String(selectedProduct?.tdsLink || item.tdsLink || "");
+        item.total = calculateOrderItemTotal({ ...item, quantity });
+      } else if (field === "tdsLink") {
+        item.tdsLink = String(rawValue || "");
+      } else if (field === "productSearch") {
+        item.productSearch = String(rawValue || "");
+      } else if (field === "selectedCategory") {
+        const selectedCategory = String(rawValue || "");
+        item.selectedCategory = selectedCategory;
+        const pool = getProductPoolWithoutSearch({ ...item, selectedCategory });
+        const currentProductId = typeof item.product === "string" ? item.product : item.product?._id;
+        const stillValid = pool.some((p) => p._id === currentProductId);
+        if (!stillValid && pool.length > 0) {
+          const fallback = pool[0];
+          item.product = fallback;
+          item.unitPrice = Number(fallback.price || 0);
+          item.tdsLink = String(fallback.tdsLink || "");
+          item.total = calculateOrderItemTotal(item);
+        }
       } else {
-        item.unitPrice = Number.isFinite(numericValue) ? Math.max(0, numericValue) : 0;
+        const numericValue = Number(rawValue);
+        if (field === "quantity") {
+          item.quantity = Number.isFinite(numericValue) ? Math.max(1, Math.round(numericValue)) : 1;
+        } else if (field === "unitPrice") {
+          item.unitPrice = Number.isFinite(numericValue) ? Math.max(0, numericValue) : 0;
+        } else if (field === "deliveryCharges") {
+          item.deliveryCharges = Number.isFinite(numericValue) ? Math.max(0, numericValue) : 0;
+        } else {
+          item.biltyCharges = Number.isFinite(numericValue) ? Math.max(0, numericValue) : 0;
+        }
+        item.total = calculateOrderItemTotal(item);
       }
-      item.total = Number(item.quantity || 0) * Number(item.unitPrice || 0);
       existingItems[itemIndex] = item;
 
       return { ...prev, items: existingItems };
     });
   };
+
+  const addEditingItem = () => {
+    if (addableProductsForCurrentUser.length === 0) {
+      setMessage("❌ No products available to add.");
+      setTimeout(() => setMessage(""), 3000);
+      return;
+    }
+    const defaultProduct = addableProductsForCurrentUser[0];
+    setEditingOrder((prev) => {
+      const existingItems = Array.isArray(prev.items) ? [...prev.items] : [];
+      existingItems.push({
+        product: defaultProduct,
+        selectedCategory: "",
+        productSearch: "",
+        quantity: 1,
+        unitPrice: Number(defaultProduct.price || 0),
+        deliveryCharges: 0,
+        biltyCharges: 0,
+        total: Number(defaultProduct.price || 0),
+        tdsLink: String(defaultProduct.tdsLink || ""),
+      });
+      return { ...prev, items: existingItems };
+    });
+  };
+
+  const removeEditingItem = (itemIndex: number) => {
+    setEditingOrder((prev) => {
+      const existingItems = Array.isArray(prev.items) ? [...prev.items] : [];
+      if (!existingItems[itemIndex]) return prev;
+      existingItems.splice(itemIndex, 1);
+      return { ...prev, items: existingItems };
+    });
+  };
+  const editingItemsSubtotal = Array.isArray(editingOrder.items)
+    ? editingOrder.items.reduce(
+        (sum, item) => sum + Number(item?.total || calculateOrderItemTotal(item)),
+        0
+      )
+    : 0;
+  const previewDiscount = Number(selectedOrder?.totalDiscount || 0);
+  const previewFinalTotal = Math.max(0, editingItemsSubtotal - previewDiscount);
 
   const fileToDataUrl = (file: File): Promise<string> =>
     new Promise((resolve, reject) => {
@@ -733,11 +968,16 @@ function OrdersPageContent() {
               : (item.product as { _id?: string })?._id;
           const quantity = Math.max(1, Number(item.quantity || 1));
           const unitPrice = Math.max(0, Number(item.unitPrice || 0));
+          const deliveryCharges = Math.max(0, Number(item.deliveryCharges || 0));
+          const biltyCharges = Math.max(0, Number(item.biltyCharges || 0));
           return {
+            _id: (item as { _id?: string })?._id,
             product: productId,
             quantity,
             unitPrice,
-            total: quantity * unitPrice,
+            deliveryCharges,
+            biltyCharges,
+            total: quantity * unitPrice + deliveryCharges + biltyCharges,
             tdsLink: (item as { tdsLink?: string })?.tdsLink || "",
           };
         });
@@ -792,6 +1032,18 @@ function OrdersPageContent() {
         setTimeout(() => setMessage(""), 3000);
       } else {
         const errorData = await response.text();
+        const errorLower = String(errorData || "").toLowerCase();
+        const shouldRedirectForAuthError =
+          response.status === 401 ||
+          (response.status === 403 &&
+            (errorLower.includes("token") ||
+              errorLower.includes("jwt") ||
+              errorLower.includes("expired") ||
+              errorLower.includes("unauthorized") ||
+              errorLower.includes("authentication")));
+        if (shouldRedirectForAuthError && handleAuthError(response.status, "Please log in to manage orders")) {
+          return;
+        }
         if (response.status === 413) {
           setMessage("❌ Attachment is too large for request payload. Please upload a smaller file.");
         } else {
@@ -812,28 +1064,94 @@ function OrdersPageContent() {
   const handleStatusChange = async (orderId: string, newStatus: string) => {
     try {
       let comments: string | undefined;
-      if (isLogisticManager && ["hold", "dispatch", "partial_shipment"].includes(newStatus)) {
-        const reasonPrompt =
-          newStatus === "hold"
-            ? "Enter reason for putting this order on hold:"
-            : newStatus === "dispatch"
-            ? "Enter dispatch remark/details:"
-            : "Enter partial shipment details (what is shipped / pending):";
-        const reason = window.prompt(reasonPrompt);
-        if (reason === null) return;
-        const trimmedReason = reason.trim();
-        if (!trimmedReason) {
+      let partialShipmentItems:
+        | Array<{
+            productId: string;
+            productName: string;
+            orderedQuantity: number;
+            shippedQuantity: number;
+            remainingQuantity: number;
+          }>
+        | undefined;
+      if (newStatus === "partial_shipment") {
+        const targetOrder = orders.find((order) => order._id === orderId);
+        if (!targetOrder || !Array.isArray(targetOrder.items) || targetOrder.items.length === 0) {
+          setMessage("❌ Unable to capture partial shipment items for this order");
+          setTimeout(() => setMessage(""), 3000);
+          return;
+        }
+        const draftItems: PartialShipmentDraftItem[] = targetOrder.items.map((item) => ({
+          productId: String(item.product?._id || item._id || ""),
+          productName: String(item.product?.name || "Item"),
+          orderedQuantity: Number(item.quantity || 0),
+          shippedQuantity: 0,
+        }));
+        setPartialShipmentOrderId(orderId);
+        setPartialShipmentDraftItems(draftItems);
+        setPartialShipmentNote("");
+        setShowPartialShipmentModal(true);
+        return;
+      }
+
+      if (newStatus === "hold") {
+        setHoldOrderId(orderId);
+        setHoldReason("");
+        setShowHoldModal(true);
+        return;
+      }
+
+      if (isLogisticManager && newStatus === "dispatch") {
+        if (newStatus === "dispatch") {
+          const targetOrder = orders.find((order) => order._id === orderId);
+          const latestPartialRemark = [...(targetOrder?.logisticsRemarks || [])]
+            .reverse()
+            .find(
+              (entry) =>
+                String(entry.status || "").toLowerCase() === "partial_shipment" &&
+                Array.isArray(entry.partialShipmentItems) &&
+                entry.partialShipmentItems.length > 0
+            );
+          const remainingItems = (latestPartialRemark?.partialShipmentItems || [])
+            .map((item) => {
+              const remaining = Number(item.remainingQuantity || 0);
+              return {
+                productId: String(item.productId || ""),
+                productName: String(item.productName || "Item"),
+                orderedQuantity: remaining,
+                shippedQuantity: remaining,
+                remainingQuantity: 0,
+              };
+            })
+            .filter((item) => item.orderedQuantity > 0);
+
+          if (remainingItems.length > 0) {
+            setDispatchOrderId(orderId);
+            setDispatchDraftItems(remainingItems);
+            setDispatchNote("");
+            setShowDispatchModal(true);
+            return;
+          }
+        } else {
+          const reason = window.prompt("Enter dispatch remark/details:");
+          if (reason === null) return;
+          const trimmedReason = reason.trim();
+          if (!trimmedReason) {
+            setMessage("❌ Dispatch remark is required");
+            setTimeout(() => setMessage(""), 3000);
+            return;
+          }
+          comments = trimmedReason;
+        }
+
+        if (!comments) {
           setMessage(
-            newStatus === "hold"
-              ? "❌ Hold reason is required"
-              : newStatus === "dispatch"
+            newStatus === "dispatch"
               ? "❌ Dispatch remark is required"
               : "❌ Partial shipment details are required"
           );
           setTimeout(() => setMessage(""), 3000);
           return;
         }
-        comments = trimmedReason;
       }
 
       const response = await fetch(`/api/orders/${orderId}/status`, {
@@ -842,6 +1160,7 @@ function OrdersPageContent() {
         body: JSON.stringify({
           status: newStatus,
           ...(comments ? { comments } : {}),
+          ...(partialShipmentItems ? { partialShipmentItems } : {}),
         }),
       });
 
@@ -858,6 +1177,9 @@ function OrdersPageContent() {
         void fetchOrders({ background: true });
         setTimeout(() => setMessage(""), 3000);
       } else {
+        if (handleAuthError(response.status, "Please log in to manage orders")) {
+          return;
+        }
         const errorData = await response.json().catch(() => ({}));
         setMessage(`❌ Failed to update status to ${newStatus}: ${errorData?.error || errorData?.message || 'Unknown error'}`);
         setTimeout(() => setMessage(""), 3000);
@@ -865,6 +1187,172 @@ function OrdersPageContent() {
     } catch (error) {
       console.error('Error updating status:', error);
       setMessage("❌ Error updating status");
+      setTimeout(() => setMessage(""), 3000);
+    }
+  };
+
+  const submitHoldUpdate = async () => {
+    if (!holdOrderId) return;
+    const trimmedReason = holdReason.trim();
+    if (!trimmedReason) {
+      setMessage("❌ Hold reason is required");
+      setTimeout(() => setMessage(""), 3000);
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/orders/${holdOrderId}/status`, {
+        method: "PUT",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          status: "hold",
+          comments: trimmedReason,
+        }),
+      });
+
+      if (response.ok) {
+        setOrders((prev) =>
+          prev.map((order) =>
+            order._id === holdOrderId
+              ? { ...order, status: "hold", updatedAt: new Date().toISOString() }
+              : order
+          )
+        );
+        setShowHoldModal(false);
+        setHoldOrderId(null);
+        setHoldReason("");
+        setMessage("✅ Order status updated to hold!");
+        void fetchOrders({ background: true });
+        setTimeout(() => setMessage(""), 3000);
+      } else {
+        if (handleAuthError(response.status, "Please log in to manage orders")) return;
+        const errorData = await response.json().catch(() => ({}));
+        setMessage(`❌ Failed to update status to hold: ${errorData?.error || errorData?.message || "Unknown error"}`);
+        setTimeout(() => setMessage(""), 3000);
+      }
+    } catch (error) {
+      console.error("Error updating hold status:", error);
+      setMessage("❌ Error updating hold status");
+      setTimeout(() => setMessage(""), 3000);
+    }
+  };
+
+  const handlePartialShipmentQuantityChange = (index: number, value: string) => {
+    const parsed = Number(value);
+    setPartialShipmentDraftItems((prev) =>
+      prev.map((item, itemIndex) => {
+        if (itemIndex !== index) return item;
+        const numericValue = Number.isFinite(parsed) ? parsed : 0;
+        const shippedQuantity = Math.max(0, Math.min(item.orderedQuantity, numericValue));
+        return { ...item, shippedQuantity };
+      })
+    );
+  };
+
+  const submitPartialShipmentUpdate = async () => {
+    if (!partialShipmentOrderId || partialShipmentDraftItems.length === 0) return;
+    const normalizedItems = partialShipmentDraftItems.map((item) => ({
+      productId: item.productId,
+      productName: item.productName,
+      orderedQuantity: item.orderedQuantity,
+      shippedQuantity: item.shippedQuantity,
+      remainingQuantity: item.orderedQuantity - item.shippedQuantity,
+    }));
+    const shippedAny = normalizedItems.some((item) => item.shippedQuantity > 0);
+    const hasRemainingAny = normalizedItems.some((item) => item.remainingQuantity > 0);
+    if (!shippedAny || !hasRemainingAny) {
+      setMessage("❌ Partial shipment must include shipped and remaining quantities.");
+      setTimeout(() => setMessage(""), 3500);
+      return;
+    }
+    const detailsSummary = normalizedItems
+      .map((item) => `${item.productName}: shipped ${item.shippedQuantity}, pending ${item.remainingQuantity}`)
+      .join("; ");
+    const trimmedNote = partialShipmentNote.trim();
+    const comments = trimmedNote ? `${detailsSummary}. Note: ${trimmedNote}` : detailsSummary;
+
+    try {
+      const response = await fetch(`/api/orders/${partialShipmentOrderId}/status`, {
+        method: "PUT",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          status: "partial_shipment",
+          comments,
+          partialShipmentItems: normalizedItems,
+        }),
+      });
+      if (response.ok) {
+        setOrders((prev) =>
+          prev.map((order) =>
+            order._id === partialShipmentOrderId
+              ? { ...order, status: "partial_shipment", updatedAt: new Date().toISOString() }
+              : order
+          )
+        );
+        setShowPartialShipmentModal(false);
+        setPartialShipmentOrderId(null);
+        setPartialShipmentDraftItems([]);
+        setPartialShipmentNote("");
+        setMessage("✅ Order status updated to partial_shipment!");
+        void fetchOrders({ background: true });
+        setTimeout(() => setMessage(""), 3000);
+      } else {
+        if (handleAuthError(response.status, "Please log in to manage orders")) return;
+        const errorData = await response.json().catch(() => ({}));
+        setMessage(`❌ Failed to update status to partial_shipment: ${errorData?.error || errorData?.message || "Unknown error"}`);
+        setTimeout(() => setMessage(""), 3000);
+      }
+    } catch (error) {
+      console.error("Error updating partial shipment:", error);
+      setMessage("❌ Error updating partial shipment");
+      setTimeout(() => setMessage(""), 3000);
+    }
+  };
+
+  const submitDispatchUpdate = async () => {
+    if (!dispatchOrderId) return;
+    const summary = dispatchDraftItems.length
+      ? dispatchDraftItems
+          .map((item) => `${item.productName}: shipped ${item.shippedQuantity}, pending ${item.remainingQuantity}`)
+          .join("; ")
+      : "Order dispatched";
+    const note = dispatchNote.trim();
+    const comments = note ? `${summary}. Note: ${note}` : summary;
+
+    try {
+      const response = await fetch(`/api/orders/${dispatchOrderId}/status`, {
+        method: "PUT",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          status: "dispatch",
+          comments,
+          ...(dispatchDraftItems.length ? { partialShipmentItems: dispatchDraftItems } : {}),
+        }),
+      });
+      if (response.ok) {
+        setOrders((prev) =>
+          prev.map((order) =>
+            order._id === dispatchOrderId
+              ? { ...order, status: "dispatch", updatedAt: new Date().toISOString() }
+              : order
+          )
+        );
+        setShowDispatchModal(false);
+        setDispatchOrderId(null);
+        setDispatchDraftItems([]);
+        setDispatchNote("");
+        setMessage("✅ Order status updated to dispatch!");
+        void fetchOrders({ background: true });
+        setTimeout(() => setMessage(""), 3000);
+      } else {
+        if (handleAuthError(response.status, "Please log in to manage orders")) return;
+        const errorData = await response.json().catch(() => ({}));
+        setMessage(`❌ Failed to update status to dispatch: ${errorData?.error || errorData?.message || "Unknown error"}`);
+        setTimeout(() => setMessage(""), 3000);
+      }
+    } catch (error) {
+      console.error("Error updating dispatch:", error);
+      setMessage("❌ Error updating dispatch");
       setTimeout(() => setMessage(""), 3000);
     }
   };
@@ -926,6 +1414,9 @@ function OrdersPageContent() {
         setDiscountValue("");
         setDiscountComments("");
       } else {
+        if (handleAuthError(response.status, "Please log in to manage orders")) {
+          return;
+        }
         const errorData = await response.json();
         setMessage(`❌ Error applying discount: ${errorData.message || 'Unknown error'}`);
       }
@@ -977,6 +1468,9 @@ function OrdersPageContent() {
         setInvoiceOrder(null);
         setTimeout(() => setMessage(""), 5000);
       } else {
+        if (handleAuthError(response.status, "Please log in to manage orders")) {
+          return;
+        }
         const errorData = await response.json();
         setMessage(`❌ Failed to create invoice: ${errorData.message || 'Unknown error'}`);
         setTimeout(() => setMessage(""), 5000);
@@ -1692,19 +2186,6 @@ function OrdersPageContent() {
                               </svg>
                             </button>
                           </PermissionGate>
-                          {canDeleteOrders && (
-                            <PermissionGate permission="orders.delete">
-                              <button 
-                                onClick={() => handleDeleteOrder(order._id, order.orderNumber)}
-                                className="p-2 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors"
-                                title="Delete Order"
-                              >
-                                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                </svg>
-                              </button>
-                            </PermissionGate>
-                          )}
                         </>
                       )}
                     </div>
@@ -1779,6 +2260,211 @@ function OrdersPageContent() {
         </div>
       )}
 
+      {showPartialShipmentModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
+          <div className="w-full max-w-3xl rounded-lg bg-white shadow-xl dark:bg-gray-800">
+            <div className="border-b border-gray-200 px-6 py-4 dark:border-gray-700">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Partial Shipment Details</h3>
+              <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+                Enter shipped quantity per item. Remaining quantity is calculated automatically.
+              </p>
+            </div>
+            <div className="max-h-[60vh] overflow-y-auto p-6">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-gray-100 dark:bg-gray-700">
+                      <th className="px-3 py-2 text-left">Product</th>
+                      <th className="px-3 py-2 text-left">Ordered</th>
+                      <th className="px-3 py-2 text-left">Shipped</th>
+                      <th className="px-3 py-2 text-left">Remaining</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {partialShipmentDraftItems.map((item, index) => {
+                      const remaining = item.orderedQuantity - item.shippedQuantity;
+                      return (
+                        <tr key={`partial-shipment-row-${index}-${item.productId || item.productName}`} className="border-b border-gray-200 dark:border-gray-700">
+                          <td className="px-3 py-2 text-gray-900 dark:text-gray-100">{item.productName}</td>
+                          <td className="px-3 py-2 text-gray-700 dark:text-gray-300">{item.orderedQuantity}</td>
+                          <td className="px-3 py-2">
+                            <input
+                              type="number"
+                              min={0}
+                              max={item.orderedQuantity}
+                              value={item.shippedQuantity}
+                              onChange={(e) => handlePartialShipmentQuantityChange(index, e.target.value)}
+                              className="w-24 rounded border border-gray-300 bg-white px-2 py-1 text-gray-900 focus:border-blue-900 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                            />
+                          </td>
+                          <td className="px-3 py-2 text-gray-700 dark:text-gray-300">{remaining}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="mt-4">
+                <label className="mb-1 block text-sm font-medium text-gray-800 dark:text-gray-200">
+                  Additional Note (optional)
+                </label>
+                <textarea
+                  value={partialShipmentNote}
+                  onChange={(e) => setPartialShipmentNote(e.target.value)}
+                  rows={3}
+                  placeholder="Any extra details for this partial shipment..."
+                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 focus:border-blue-900 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 border-t border-gray-200 px-6 py-4 dark:border-gray-700">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowPartialShipmentModal(false);
+                  setPartialShipmentOrderId(null);
+                  setPartialShipmentDraftItems([]);
+                  setPartialShipmentNote("");
+                }}
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:border-blue-900 hover:text-blue-900 dark:border-gray-600 dark:text-gray-200 dark:hover:border-blue-400 dark:hover:text-blue-300"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={submitPartialShipmentUpdate}
+                className="rounded-lg bg-blue-900 px-4 py-2 text-sm font-medium text-white hover:bg-blue-800"
+              >
+                Confirm Partial Shipment
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showDispatchModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
+          <div className="w-full max-w-3xl rounded-lg bg-white shadow-xl dark:bg-gray-800">
+            <div className="border-b border-gray-200 px-6 py-4 dark:border-gray-700">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Dispatch Remaining Items</h3>
+              <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+                Remaining quantities from the latest partial shipment are listed below.
+              </p>
+            </div>
+            <div className="max-h-[60vh] overflow-y-auto p-6">
+              {dispatchDraftItems.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-gray-100 dark:bg-gray-700">
+                        <th className="px-3 py-2 text-left">Product</th>
+                        <th className="px-3 py-2 text-left">Remaining Before Dispatch</th>
+                        <th className="px-3 py-2 text-left">Dispatching Now</th>
+                        <th className="px-3 py-2 text-left">Remaining After Dispatch</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {dispatchDraftItems.map((item, index) => (
+                        <tr key={`dispatch-row-${index}-${item.productId || item.productName}`} className="border-b border-gray-200 dark:border-gray-700">
+                          <td className="px-3 py-2 text-gray-900 dark:text-gray-100">{item.productName}</td>
+                          <td className="px-3 py-2 text-gray-700 dark:text-gray-300">{item.orderedQuantity}</td>
+                          <td className="px-3 py-2 text-gray-700 dark:text-gray-300">{item.shippedQuantity}</td>
+                          <td className="px-3 py-2 text-gray-700 dark:text-gray-300">{item.remainingQuantity}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="text-sm text-gray-600 dark:text-gray-300">
+                  No partial-shipment remaining item breakdown found. You can still add a dispatch note.
+                </p>
+              )}
+
+              <div className="mt-4">
+                <label className="mb-1 block text-sm font-medium text-gray-800 dark:text-gray-200">
+                  Additional Dispatch Note (optional)
+                </label>
+                <textarea
+                  value={dispatchNote}
+                  onChange={(e) => setDispatchNote(e.target.value)}
+                  rows={3}
+                  placeholder="Any extra dispatch details..."
+                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 focus:border-blue-900 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 border-t border-gray-200 px-6 py-4 dark:border-gray-700">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowDispatchModal(false);
+                  setDispatchOrderId(null);
+                  setDispatchDraftItems([]);
+                  setDispatchNote("");
+                }}
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:border-blue-900 hover:text-blue-900 dark:border-gray-600 dark:text-gray-200 dark:hover:border-blue-400 dark:hover:text-blue-300"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={submitDispatchUpdate}
+                className="rounded-lg bg-blue-900 px-4 py-2 text-sm font-medium text-white hover:bg-blue-800"
+              >
+                Confirm Dispatch
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showHoldModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
+          <div className="w-full max-w-lg rounded-lg bg-white shadow-xl dark:bg-gray-800">
+            <div className="border-b border-gray-200 px-6 py-4 dark:border-gray-700">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Hold Reason Required</h3>
+              <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+                Please provide the reason for putting this order on hold.
+              </p>
+            </div>
+            <div className="p-6">
+              <label className="mb-1 block text-sm font-medium text-gray-800 dark:text-gray-200">
+                Hold Reason
+              </label>
+              <textarea
+                value={holdReason}
+                onChange={(e) => setHoldReason(e.target.value)}
+                rows={4}
+                placeholder="Enter hold reason..."
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 focus:border-blue-900 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+              />
+            </div>
+            <div className="flex justify-end gap-3 border-t border-gray-200 px-6 py-4 dark:border-gray-700">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowHoldModal(false);
+                  setHoldOrderId(null);
+                  setHoldReason("");
+                }}
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:border-blue-900 hover:text-blue-900 dark:border-gray-600 dark:text-gray-200 dark:hover:border-blue-400 dark:hover:text-blue-300"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={submitHoldUpdate}
+                className="rounded-lg bg-blue-900 px-4 py-2 text-sm font-medium text-white hover:bg-blue-800"
+              >
+                Confirm Hold
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* View Order Modal */}
       {showViewModal && selectedOrder && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -1837,11 +2523,27 @@ function OrdersPageContent() {
                         <p className="text-sm font-semibold">Logistics Remarks:</p>
                         <div className="mt-1 space-y-1">
                           {selectedOrder.logisticsRemarks.map((entry, idx) => (
-                            <p key={`logistics-remark-${idx}`} className="text-sm text-gray-700 dark:text-gray-300">
-                              [{formatStatusLabel(String(entry.status || "status"))}] {entry.remark}
-                              {entry.createdByName || entry.createdByEmail ? ` — ${entry.createdByName || entry.createdByEmail}` : ""}
-                              {entry.createdAt ? ` @ ${new Date(entry.createdAt).toLocaleString()}` : ""}
-                            </p>
+                            <div key={`logistics-remark-${idx}`} className="rounded border border-gray-200 bg-white p-2 dark:border-gray-600 dark:bg-gray-800">
+                              <p className="text-sm text-gray-700 dark:text-gray-300">
+                                [{formatStatusLabel(String(entry.status || "status"))}] {entry.remark}
+                                {entry.createdByName || entry.createdByEmail ? ` — ${entry.createdByName || entry.createdByEmail}` : ""}
+                                {entry.createdAt ? ` @ ${new Date(entry.createdAt).toLocaleString()}` : ""}
+                              </p>
+                              {String(entry.status || "").toLowerCase() === "partial_shipment" &&
+                                Array.isArray(entry.partialShipmentItems) &&
+                                entry.partialShipmentItems.length > 0 && (
+                                  <div className="mt-2 space-y-1">
+                                    {entry.partialShipmentItems.map((item, itemIdx) => (
+                                      <p
+                                        key={`partial-item-${idx}-${itemIdx}`}
+                                        className="text-xs text-gray-600 dark:text-gray-400"
+                                      >
+                                        {item.productName || "Item"}: ordered {Number(item.orderedQuantity || 0)}, shipped {Number(item.shippedQuantity || 0)}, remaining {Number(item.remainingQuantity || 0)}
+                                      </p>
+                                    ))}
+                                  </div>
+                                )}
+                            </div>
                           ))}
                         </div>
                       </div>
@@ -2004,6 +2706,8 @@ function OrdersPageContent() {
                             <th className="px-3 py-2 text-left">Product</th>
                             <th className="px-3 py-2 text-left">Quantity</th>
                             <th className="px-3 py-2 text-left">Unit Price</th>
+                            <th className="px-3 py-2 text-left">Delivery Charges</th>
+                            <th className="px-3 py-2 text-left">Bilty Charges</th>
                             <th className="px-3 py-2 text-left">Total</th>
                           </tr>
                         </thead>
@@ -2013,6 +2717,8 @@ function OrdersPageContent() {
                               <td className="px-3 py-2">{item.product?.name || 'N/A'}</td>
                               <td className="px-3 py-2">{item.quantity}</td>
                               <td className="px-3 py-2">PKR {(item.unitPrice || 0).toLocaleString()}</td>
+                              <td className="px-3 py-2">PKR {Number(item.deliveryCharges || 0).toLocaleString()}</td>
+                              <td className="px-3 py-2">PKR {Number(item.biltyCharges || 0).toLocaleString()}</td>
                               <td className="px-3 py-2">PKR {(item.total || 0).toLocaleString()}</td>
                             </tr>
                           ))}
@@ -2121,31 +2827,95 @@ function OrdersPageContent() {
                   />
                 </div>
 
-                {Array.isArray(editingOrder.items) && editingOrder.items.length > 0 && (
+                {Array.isArray(editingOrder.items) && (
                   <div>
-                    <label className="block text-sm font-medium text-blue-900 dark:text-white mb-2">
-                      Order Items (Editable Quantity & Unit Price)
-                    </label>
-                    <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="bg-gray-100 dark:bg-gray-700">
-                            <th className="px-3 py-2 text-left">Product</th>
-                            <th className="px-3 py-2 text-left">Quantity</th>
-                            <th className="px-3 py-2 text-left">Unit Price (PKR)</th>
-                            <th className="px-3 py-2 text-left">Total</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {editingOrder.items.map((item, index) => (
-                            <tr
-                              key={`${selectedOrder?._id}-edit-item-${index}-${typeof item.product === "string" ? item.product : item.product?._id || "unknown"}`}
-                              className="border-b border-gray-200 dark:border-gray-600"
-                            >
-                              <td className="px-3 py-2">
-                                {typeof item.product === "string" ? item.product : item.product?.name || "N/A"}
-                              </td>
-                              <td className="px-3 py-2">
+                    <div className="mb-2 flex items-center justify-between gap-3">
+                      <label className="block text-sm font-medium text-blue-900 dark:text-white">
+                        Order Items (Editable Product, Quantity & Unit Price)
+                      </label>
+                      <button
+                        type="button"
+                        onClick={addEditingItem}
+                        disabled={!canAddOrRemoveItems || loadingEditableProducts || addableProductsForCurrentUser.length === 0}
+                        className="inline-flex items-center rounded-lg bg-blue-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        + Add Item
+                      </button>
+                    </div>
+                    {editingOrder.items.length === 0 ? (
+                      <div className="rounded-lg border border-dashed border-gray-300 px-3 py-4 text-sm text-gray-500 dark:border-gray-600 dark:text-gray-400">
+                        No items yet. Use + Add Item to include products in this order.
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {editingOrder.items.map((item, index) => (
+                          <div
+                            key={`${selectedOrder?._id}-edit-item-${index}-${typeof item.product === "string" ? item.product : item.product?._id || "unknown"}`}
+                            className="rounded-lg border border-gray-200 p-3 dark:border-gray-700"
+                          >
+                            <div className="mb-2 text-xs font-medium text-gray-500 dark:text-gray-400">
+                              Item #{index + 1}
+                            </div>
+                            {(!item._id || !isCategoryManager) && categoryOptionsForCurrentUser.length > 0 && (
+                              <div className="mb-3">
+                                <label className="mb-1 block text-xs font-medium text-blue-900 dark:text-white">
+                                  Category
+                                </label>
+                                <select
+                                  value={String(item.selectedCategory || getProductCategoryLabel(item.product) || "")}
+                                  onChange={(e) => updateEditingItem(index, "selectedCategory", e.target.value)}
+                                  disabled={!canCurrentUserEditOrderItem(item) || (isCategoryManager && Boolean(item._id))}
+                                  className="w-full rounded-lg border border-gray-300 bg-white px-2 py-2 text-gray-900 focus:border-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-900/50 disabled:cursor-not-allowed disabled:bg-gray-100 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:disabled:bg-gray-800"
+                                >
+                                  {categoryOptionsForCurrentUser.map((categoryOption) => (
+                                    <option key={categoryOption} value={categoryOption}>
+                                      {categoryOption}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            )}
+                            <div className="grid grid-cols-1 gap-3 md:grid-cols-6">
+                              <div className="md:col-span-2">
+                                <label className="mb-1 block text-xs font-medium text-blue-900 dark:text-white">Product</label>
+                                <input
+                                  type="text"
+                                  placeholder="Type product name to search..."
+                                  value={String(item.productSearch || "")}
+                                  onChange={(e) => updateEditingItem(index, "productSearch", e.target.value)}
+                                  disabled={!canCurrentUserEditOrderItem(item)}
+                                  className="mb-2 w-full rounded-lg border border-gray-300 bg-white px-2 py-2 text-gray-900 focus:border-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-900/50 disabled:cursor-not-allowed disabled:bg-gray-100 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:disabled:bg-gray-800"
+                                />
+                                <select
+                                  value={typeof item.product === "string" ? item.product : item.product?._id || ""}
+                                  onChange={(e) => {
+                                    const selectedProduct = getItemProductPool(item).find((p) => p._id === e.target.value);
+                                    if (selectedProduct) {
+                                      updateEditingItem(index, "product", selectedProduct);
+                                    }
+                                  }}
+                                  disabled={!canCurrentUserEditOrderItem(item) || (isCategoryManager && Boolean(item._id))}
+                                  className="w-full rounded-lg border border-gray-300 bg-white px-2 py-2 text-gray-900 focus:border-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-900/50 disabled:cursor-not-allowed disabled:bg-gray-100 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:disabled:bg-gray-800"
+                                >
+                                  {getItemProductPool(item).map((product) => (
+                                    <option key={product._id} value={product._id}>
+                                      {product.name}
+                                    </option>
+                                  ))}
+                                </select>
+                                {getItemProductPool(item).length === 0 && (
+                                  <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">
+                                    No products available in selected category.
+                                  </p>
+                                )}
+                                {isCategoryManager && Boolean(item._id) && (
+                                  <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">
+                                    Existing item product cannot be changed; add a new row to use another product.
+                                  </p>
+                                )}
+                              </div>
+                              <div>
+                                <label className="mb-1 block text-xs font-medium text-blue-900 dark:text-white">Quantity</label>
                                 <input
                                   type="number"
                                   min={1}
@@ -2153,10 +2923,11 @@ function OrdersPageContent() {
                                   value={Number(item.quantity || 1)}
                                   onChange={(e) => updateEditingItem(index, "quantity", e.target.value)}
                                   disabled={!canCurrentUserEditOrderItem(item)}
-                                  className="w-24 rounded-lg border border-gray-300 bg-white px-2 py-1 text-gray-900 focus:border-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-900/50 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                                  className="w-full rounded-lg border border-gray-300 bg-white px-2 py-2 text-gray-900 focus:border-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-900/50 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                                 />
-                              </td>
-                              <td className="px-3 py-2">
+                              </div>
+                              <div>
+                                <label className="mb-1 block text-xs font-medium text-blue-900 dark:text-white">Unit Price (PKR)</label>
                                 <input
                                   type="number"
                                   min={0}
@@ -2164,23 +2935,85 @@ function OrdersPageContent() {
                                   value={Number(item.unitPrice || 0)}
                                   onChange={(e) => updateEditingItem(index, "unitPrice", e.target.value)}
                                   disabled={!canCurrentUserEditOrderItem(item)}
-                                  className="w-32 rounded-lg border border-gray-300 bg-white px-2 py-1 text-gray-900 focus:border-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-900/50 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                                  className="w-full rounded-lg border border-gray-300 bg-white px-2 py-2 text-gray-900 focus:border-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-900/50 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                                 />
-                              </td>
-                              <td className="px-3 py-2 font-medium">
-                                PKR {(Number(item.quantity || 0) * Number(item.unitPrice || 0)).toLocaleString()}
+                              </div>
+                              <div>
+                                <label className="mb-1 block text-xs font-medium text-blue-900 dark:text-white">Delivery (PKR)</label>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  step={0.01}
+                                  value={Number(item.deliveryCharges || 0)}
+                                  onChange={(e) => updateEditingItem(index, "deliveryCharges", e.target.value)}
+                                  disabled={!canCurrentUserEditOrderItem(item)}
+                                  className="w-full rounded-lg border border-gray-300 bg-white px-2 py-2 text-gray-900 focus:border-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-900/50 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                                />
+                              </div>
+                              <div>
+                                <label className="mb-1 block text-xs font-medium text-blue-900 dark:text-white">Bilty (PKR)</label>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  step={0.01}
+                                  value={Number(item.biltyCharges || 0)}
+                                  onChange={(e) => updateEditingItem(index, "biltyCharges", e.target.value)}
+                                  disabled={!canCurrentUserEditOrderItem(item)}
+                                  className="w-full rounded-lg border border-gray-300 bg-white px-2 py-2 text-gray-900 focus:border-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-900/50 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                                />
+                              </div>
+                            </div>
+                            <div className="mt-3">
+                              <label className="mb-1 block text-xs font-medium text-blue-900 dark:text-white">
+                                TDS Link
+                              </label>
+                              <input
+                                type="url"
+                                placeholder="https://example.com/tds.pdf"
+                                value={String((item as { tdsLink?: string })?.tdsLink || "")}
+                                onChange={(e) => updateEditingItem(index, "tdsLink", e.target.value)}
+                                disabled={!canCurrentUserEditOrderItem(item)}
+                                className="w-full rounded-lg border border-gray-300 bg-white px-2 py-2 text-gray-900 focus:border-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-900/50 disabled:cursor-not-allowed disabled:bg-gray-100 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:disabled:bg-gray-800"
+                              />
+                            </div>
+                            <div className="mt-3 flex items-center justify-between">
+                              <div className="text-sm font-medium text-gray-900 dark:text-white">
+                                Total: PKR {Number(item.total || calculateOrderItemTotal(item)).toLocaleString()}
                                 {!canCurrentUserEditOrderItem(item) && (
                                   <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">(locked)</span>
                                 )}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => removeEditingItem(index)}
+                                disabled={!canAddOrRemoveItems || (isCategoryManager && !canCategoryManagerRemoveItems) || !canCurrentUserEditOrderItem(item)}
+                                className="rounded-lg border border-red-300 bg-red-50 px-2 py-1 text-xs text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400"
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                     <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
                       Updated totals will be recalculated automatically when you save.
                     </p>
+                    <p className="mt-1 text-xs font-medium text-blue-900 dark:text-blue-300">
+                      Running Subtotal: PKR {editingItemsSubtotal.toLocaleString()}
+                    </p>
+                    {isCategoryManager && (
+                      <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                        Managers can add/edit only items from their assigned categories; existing rows remain protected and cannot be removed.
+                      </p>
+                    )}
+                    {(loadingEditableProducts || editableProducts.length === 0) && (
+                      <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                        {loadingEditableProducts
+                          ? "Loading product options..."
+                          : "No product options loaded yet. Re-open edit modal or refresh page."}
+                      </p>
+                    )}
                   </div>
                 )}
 
@@ -2206,6 +3039,26 @@ function OrdersPageContent() {
                       Current: {editingOrder.attachment.fileName}
                     </p>
                   ) : null}
+                </div>
+
+                <div className="rounded-lg border border-blue-200 bg-blue-50/70 p-3 dark:border-blue-900/40 dark:bg-blue-900/10">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-blue-900 dark:text-blue-300">
+                    Order Total Preview
+                  </p>
+                  <div className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-3">
+                    <div className="rounded-md bg-white/70 px-3 py-2 dark:bg-gray-800/60">
+                      <p className="text-xs text-gray-500 dark:text-gray-400">Subtotal</p>
+                      <p className="font-semibold text-blue-900 dark:text-white">PKR {editingItemsSubtotal.toLocaleString()}</p>
+                    </div>
+                    <div className="rounded-md bg-white/70 px-3 py-2 dark:bg-gray-800/60">
+                      <p className="text-xs text-gray-500 dark:text-gray-400">Discount</p>
+                      <p className="font-semibold text-red-600 dark:text-red-400">PKR {previewDiscount.toLocaleString()}</p>
+                    </div>
+                    <div className="rounded-md bg-white/70 px-3 py-2 dark:bg-gray-800/60">
+                      <p className="text-xs text-gray-500 dark:text-gray-400">Final Total</p>
+                      <p className="font-semibold text-green-700 dark:text-green-400">PKR {previewFinalTotal.toLocaleString()}</p>
+                    </div>
+                  </div>
                 </div>
                 
                 <div className="flex flex-col sm:flex-row justify-end gap-3">

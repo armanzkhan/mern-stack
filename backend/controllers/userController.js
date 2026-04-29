@@ -34,6 +34,7 @@ exports.createUser = async (req, res) => {
   try {
     const userData = req.body;
     const isLogisticManager = userData.userType === 'logistic_manager';
+    const isCustomerUser = userData.isCustomer || userData.userType === 'customer';
     
     // Set default company_id if not provided
     if (!userData.company_id) {
@@ -51,8 +52,17 @@ exports.createUser = async (req, res) => {
       userData.password = await bcrypt.hash(userData.password, 10);
     }
 
+    // Canonicalize customer flags early so downstream logic and UI checks are consistent.
+    if (isCustomerUser) {
+      userData.isCustomer = true;
+      userData.isManager = false;
+      if (!userData.customerProfile) {
+        userData.customerProfile = {};
+      }
+    }
+
     // If this is a customer, assign customer role and permissions
-    if (userData.isCustomer || userData.userType === 'customer') {
+    if (isCustomerUser) {
       try {
         // Find Customer role
         const CustomerRole = require('../models/Role');
@@ -118,11 +128,28 @@ exports.createUser = async (req, res) => {
     }
 
     // Validate: Customers cannot be assigned as managers
-    if ((userData.isCustomer || userData.userType === 'customer') && 
+    if (isCustomerUser && 
         (userData.isManager || userData.userType === 'manager')) {
       return res.status(400).json({ 
         message: "A user cannot be both a customer and a manager. Please choose one role." 
       });
+    }
+
+    // Prevent creating customer logins without the required customer profile fields.
+    if (isCustomerUser) {
+      const customerValidation = {
+        companyName: String(userData.companyName || '').trim(),
+        contactName: String(userData.contactName || '').trim() || `${String(userData.firstName || '').trim()} ${String(userData.lastName || '').trim()}`.trim(),
+        customerPhone: String(userData.customerPhone || userData.phone || '').trim(),
+        street: String(userData.address?.street || '').trim(),
+        city: String(userData.address?.city || '').trim(),
+      };
+
+      if (!customerValidation.companyName || !customerValidation.contactName || !customerValidation.customerPhone || !customerValidation.street || !customerValidation.city) {
+        return res.status(400).json({
+          message: "Customer users require companyName, contactName, customerPhone, address.street and address.city."
+        });
+      }
     }
 
     // If this is a manager, initialize managerProfile and set isManager flag
@@ -287,7 +314,7 @@ exports.createUser = async (req, res) => {
     }
     
     // If this is a customer user, create customer record and assignments
-    if (userData.isCustomer || userData.userType === 'customer') {
+    if (isCustomerUser) {
       try {
         // Create customer record
         const customerData = {
@@ -315,6 +342,15 @@ exports.createUser = async (req, res) => {
 
         const customer = new Customer(customerData);
         await customer.save();
+
+        // Keep user->customer linkage authoritative for customer session bootstrap.
+        if (!user.customerProfile) {
+          user.customerProfile = {};
+        }
+        user.customerProfile.customer_id = customer._id;
+        user.customerProfile.companyName = customer.companyName;
+        user.customerProfile.customerType = customer.customerType || 'regular';
+        await user.save();
 
         // Assign managers to customer if provided
         if (userData.assignedManagers && Array.isArray(userData.assignedManagers) && userData.assignedManagers.length > 0) {
@@ -422,7 +458,12 @@ exports.createUser = async (req, res) => {
         console.log(`✅ Customer record created for user ${user.email}`);
       } catch (customerError) {
         console.error("Error creating customer record:", customerError);
-        // Don't fail the user creation if customer record creation fails
+        // Do not leave orphaned customer users without linked customer records.
+        await User.findByIdAndDelete(user._id);
+        return res.status(500).json({
+          message: "Failed to create linked customer record. User creation rolled back.",
+          error: customerError.message
+        });
       }
     }
     
@@ -492,6 +533,179 @@ exports.createUser = async (req, res) => {
   } catch (error) {
     console.error("Error creating user:", error);
     res.status(500).json({ message: "Error creating user" });
+  }
+};
+
+// Bulk create customers
+exports.bulkCreateCustomers = async (req, res) => {
+  try {
+    const rows = Array.isArray(req.body?.rows) ? req.body.rows : [];
+    const defaultCompanyId = String(req.body?.company_id || req.user?.company_id || "RESSICHEM");
+
+    if (rows.length === 0) {
+      return res.status(400).json({ message: "rows array is required" });
+    }
+
+    const Role = require("../models/Role");
+    const Permission = require("../models/Permission");
+    const Manager = require("../models/Manager");
+    const bcrypt = require("bcryptjs");
+
+    const customerRole = await Role.findOne({ name: "Customer", company_id: defaultCompanyId });
+    const customerPermissions = await Permission.find({
+      key: { $in: ["products.read", "orders.create", "orders.read", "profile.update", "notifications.read", "customer.dashboard"] },
+      company_id: defaultCompanyId,
+    });
+
+    const permissionIds = customerPermissions.map((p) => p._id);
+    const results = [];
+
+    for (let index = 0; index < rows.length; index += 1) {
+      const row = rows[index] || {};
+      const email = String(row.email || "").trim().toLowerCase();
+      const firstName = String(row.firstName || "").trim();
+      const lastName = String(row.lastName || "").trim();
+      const passwordRaw = String(row.password || "").trim();
+      const phone = String(row.phone || "").trim();
+      const companyName = String(row.companyName || "").trim();
+      const contactName = String(row.contactName || "").trim() || `${firstName} ${lastName}`.trim();
+      const customerPhone = String(row.customerPhone || "").trim() || phone;
+      const street = String(row.street || "").trim();
+      const city = String(row.city || "").trim();
+      const state = String(row.state || "").trim();
+      const zip = String(row.zip || "").trim();
+      const country = String(row.country || "Pakistan").trim();
+      const customerType = String(row.customerType || "regular").trim().toLowerCase();
+      const company_id = String(row.company_id || defaultCompanyId).trim() || defaultCompanyId;
+      const managerProfileId = String(row.managerProfileId || "").trim();
+
+      if (!email || !firstName || !lastName || !passwordRaw || passwordRaw.length < 6 || !phone || !companyName || !contactName || !customerPhone || !street || !city) {
+        results.push({
+          row: index + 1,
+          email,
+          status: "failed",
+          message: "Missing required fields (email, firstName, lastName, password>=6, phone, companyName, contactName, customerPhone, street, city).",
+        });
+        continue;
+      }
+
+      try {
+        const existingUser = await User.findOne({ company_id, email });
+        if (existingUser) {
+          results.push({
+            row: index + 1,
+            email,
+            status: "failed",
+            message: "User with this email already exists in this company.",
+          });
+          continue;
+        }
+
+        const hashedPassword = await bcrypt.hash(passwordRaw, 10);
+        const user = new User({
+          user_id: `user_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+          company_id,
+          email,
+          password: hashedPassword,
+          firstName,
+          lastName,
+          phone,
+          isActive: true,
+          isCustomer: true,
+          isManager: false,
+          userType: "customer",
+          roles: customerRole ? [customerRole._id] : [],
+          permissions: permissionIds,
+          customerProfile: {
+            companyName,
+            customerType,
+            preferences: {
+              preferredCategories: [],
+              notificationPreferences: {
+                orderUpdates: true,
+                statusChanges: true,
+                newProducts: true,
+              },
+            },
+          },
+        });
+        await user.save();
+
+        const customer = new Customer({
+          companyName,
+          contactName,
+          email,
+          phone: customerPhone,
+          street,
+          city,
+          state,
+          zip,
+          country,
+          status: "active",
+          customerType,
+          company_id,
+          user_id: user._id,
+          preferences: {
+            notificationPreferences: {
+              orderUpdates: true,
+              statusChanges: true,
+              newProducts: true,
+            },
+          },
+        });
+
+        if (managerProfileId) {
+          const manager = await Manager.findOne({
+            _id: managerProfileId,
+            company_id,
+            isActive: true,
+          });
+          if (manager) {
+            const assigned = {
+              manager_id: manager._id,
+              assignedBy: req.user?._id || req.user?.user_id || null,
+              assignedAt: new Date(),
+              isActive: true,
+            };
+            customer.assignedManager = assigned;
+            customer.assignedManagers = [assigned];
+            user.customerProfile.assignedManager = assigned;
+          }
+        }
+
+        await customer.save();
+        user.customerProfile.customer_id = customer._id;
+        await user.save();
+
+        results.push({
+          row: index + 1,
+          email,
+          status: "created",
+          userId: user._id,
+          customerId: customer._id,
+        });
+      } catch (rowError) {
+        results.push({
+          row: index + 1,
+          email,
+          status: "failed",
+          message: rowError?.message || "Failed to create customer",
+        });
+      }
+    }
+
+    const created = results.filter((r) => r.status === "created").length;
+    const failed = results.length - created;
+
+    return res.status(200).json({
+      total: rows.length,
+      created,
+      failed,
+      results,
+    });
+  } catch (error) {
+    console.error("Error bulk creating customers:", error);
+    return res.status(500).json({ message: "Error bulk creating customers" });
   }
 };
 

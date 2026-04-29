@@ -6,6 +6,7 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { getBackendUrl } from "@/lib/getBackendUrl";
+import * as XLSX from "xlsx";
 
 interface Role {
   _id: string;
@@ -65,6 +66,10 @@ export default function CreateUserPage() {
     ...initialFormData
   });
   const [loading, setLoading] = useState(false);
+  const [bulkLoading, setBulkLoading] = useState(false);
+  const [bulkCsvText, setBulkCsvText] = useState("");
+  const [bulkResults, setBulkResults] = useState<any[] | null>(null);
+  const [bulkSummary, setBulkSummary] = useState<{ total: number; created: number; failed: number } | null>(null);
   const [message, setMessage] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [customizeAccess, setCustomizeAccess] = useState(true);
@@ -80,6 +85,245 @@ export default function CreateUserPage() {
   const router = useRouter();
   const isAutoAssignedType = formData.userType === "customer" || formData.userType === "manager" || formData.userType === "logistic_manager";
   const lockAccessSelection = isAutoAssignedType && !customizeAccess;
+  const bulkTemplateHeaders = [
+    "firstName",
+    "lastName",
+    "email",
+    "password",
+    "phone",
+    "companyName",
+    "contactName",
+    "customerPhone",
+    "street",
+    "city",
+    "state",
+    "zip",
+    "country",
+    "customerType",
+    "managerProfileId",
+    "company_id",
+  ];
+  const bulkRequiredHeaders = [
+    "firstName",
+    "lastName",
+    "email",
+    "password",
+    "phone",
+    "companyName",
+    "contactName",
+    "customerPhone",
+    "street",
+    "city",
+  ];
+  const [bulkHeaderError, setBulkHeaderError] = useState("");
+
+  const parseBulkCsvRows = (csvText: string) => {
+    if (!csvText.trim()) return [];
+    const workbook = XLSX.read(csvText, { type: "string" });
+    const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+    if (!firstSheet) return [];
+    const rows = XLSX.utils.sheet_to_json<Record<string, any>>(firstSheet, { defval: "" });
+    return rows.map((row) => {
+      const normalized: Record<string, string> = {};
+      Object.entries(row).forEach(([key, value]) => {
+        normalized[String(key).trim()] = String(value ?? "").trim();
+      });
+      return normalized;
+    });
+  };
+
+  const validateBulkHeaders = (rows: Record<string, string>[]) => {
+    if (!rows.length) {
+      return { ok: false, missing: bulkRequiredHeaders };
+    }
+    const rowHeaders = new Set(Object.keys(rows[0]));
+    const missing = bulkRequiredHeaders.filter((header) => !rowHeaders.has(header));
+    return { ok: missing.length === 0, missing };
+  };
+
+  const downloadBulkTemplateCsv = () => {
+    const sampleRows = [
+      {
+        firstName: "Ali",
+        lastName: "Khan",
+        email: "ali.khan@example.com",
+        password: "Pass1234",
+        phone: "03001234567",
+        companyName: "Ali Traders",
+        contactName: "Ali Khan",
+        customerPhone: "03001234567",
+        street: "Main Road",
+        city: "Karachi",
+        state: "Sindh",
+        zip: "74000",
+        country: "Pakistan",
+        customerType: "regular",
+        managerProfileId: "",
+        company_id: "RESSICHEM",
+      },
+    ];
+    const worksheet = XLSX.utils.json_to_sheet(sampleRows, { header: bulkTemplateHeaders });
+    const csv = XLSX.utils.sheet_to_csv(worksheet);
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "bulk-customers-template.csv";
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const downloadBulkTemplateXlsx = () => {
+    const sampleRows = [
+      {
+        firstName: "Ali",
+        lastName: "Khan",
+        email: "ali.khan@example.com",
+        password: "Pass1234",
+        phone: "03001234567",
+        companyName: "Ali Traders",
+        contactName: "Ali Khan",
+        customerPhone: "03001234567",
+        street: "Main Road",
+        city: "Karachi",
+        state: "Sindh",
+        zip: "74000",
+        country: "Pakistan",
+        customerType: "regular",
+        managerProfileId: "",
+        company_id: "RESSICHEM",
+      },
+    ];
+    const worksheet = XLSX.utils.json_to_sheet(sampleRows, { header: bulkTemplateHeaders });
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Customers");
+    const managerLookupRows = (managers || []).map((manager: any) => ({
+      managerName:
+        `${manager?.firstName || ""} ${manager?.lastName || ""}`.trim() ||
+        manager?.email ||
+        "Unknown Manager",
+      email: manager?.email || "",
+      managerProfileId:
+        String(manager?.managerProfile?.manager_id || manager?._id || "").trim(),
+      userId: String(manager?.user_id || "").trim(),
+    }));
+    if (managerLookupRows.length > 0) {
+      const managerSheet = XLSX.utils.json_to_sheet(managerLookupRows, {
+        header: ["managerName", "email", "managerProfileId", "userId"],
+      });
+      XLSX.utils.book_append_sheet(workbook, managerSheet, "Managers Lookup");
+    }
+    XLSX.writeFile(workbook, "bulk-customers-template.xlsx");
+  };
+
+  const handleBulkFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      const ext = file.name.toLowerCase();
+      let loadedText = "";
+      if (ext.endsWith(".xlsx") || ext.endsWith(".xls")) {
+        const buffer = await file.arrayBuffer();
+        const workbook = XLSX.read(buffer, { type: "array" });
+        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+        if (!firstSheet) throw new Error("Excel file has no sheet.");
+        loadedText = XLSX.utils.sheet_to_csv(firstSheet);
+      } else if (ext.endsWith(".csv")) {
+        loadedText = await file.text();
+      } else {
+        throw new Error("Unsupported file type. Please upload CSV or Excel.");
+      }
+      setBulkCsvText(loadedText);
+      setBulkResults(null);
+      setBulkSummary(null);
+      const parsedRows = parseBulkCsvRows(loadedText);
+      const headerValidation = validateBulkHeaders(parsedRows);
+      if (!headerValidation.ok) {
+        setBulkHeaderError(`Missing required columns: ${headerValidation.missing.join(", ")}`);
+      } else {
+        setBulkHeaderError("");
+      }
+      toast.success("Bulk file loaded", { description: file.name });
+    } catch (error: any) {
+      toast.error("Failed to read file", { description: error?.message || "Invalid file" });
+    } finally {
+      event.target.value = "";
+    }
+  };
+
+  const handleBulkCreateCustomers = async () => {
+    try {
+      setBulkLoading(true);
+      setBulkResults(null);
+      setBulkSummary(null);
+
+      const rows = parseBulkCsvRows(bulkCsvText).map((row) => ({
+        firstName: row.firstName || "",
+        lastName: row.lastName || "",
+        email: row.email || "",
+        password: row.password || "",
+        phone: row.phone || "",
+        companyName: row.companyName || "",
+        contactName: row.contactName || "",
+        customerPhone: row.customerPhone || row.phone || "",
+        street: row.street || "",
+        city: row.city || "",
+        state: row.state || "",
+        zip: row.zip || "",
+        country: row.country || "Pakistan",
+        customerType: row.customerType || "regular",
+        managerProfileId: row.managerProfileId || "",
+        company_id: row.company_id || "RESSICHEM",
+      }));
+      const headerValidation = validateBulkHeaders(rows);
+      if (!headerValidation.ok) {
+        const headerMessage = `Missing required columns: ${headerValidation.missing.join(", ")}`;
+        setBulkHeaderError(headerMessage);
+        toast.error("Invalid bulk template", { description: headerMessage });
+        return;
+      }
+      setBulkHeaderError("");
+
+      if (rows.length === 0) {
+        toast.error("Bulk CSV is empty", {
+          description: "Please provide header + at least one data row.",
+        });
+        return;
+      }
+
+      const token = localStorage.getItem("token");
+      const response = await fetch("/api/users/bulk-create", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ rows, company_id: "RESSICHEM" }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.error || data.message || "Bulk create failed");
+      }
+
+      setBulkResults(Array.isArray(data.results) ? data.results : []);
+      setBulkSummary({
+        total: Number(data.total || rows.length),
+        created: Number(data.created || 0),
+        failed: Number(data.failed || 0),
+      });
+
+      toast.success("Bulk create finished", {
+        description: `Created ${data.created || 0} / ${data.total || rows.length} customers.`,
+      });
+    } catch (error: any) {
+      toast.error("Bulk create failed", {
+        description: error?.message || "Could not complete bulk customer creation.",
+      });
+    } finally {
+      setBulkLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (isAutoAssignedType) {
@@ -572,6 +816,116 @@ export default function CreateUserPage() {
         
         <div className="p-7">
           <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="rounded-xl border border-blue-900/20 bg-blue-50/60 p-4 dark:border-gray-600 dark:bg-gray-700/40">
+              <div className="flex flex-col gap-3">
+                <div>
+                  <h4 className="text-lg font-medium text-blue-900 dark:text-white">Bulk Customer Creation (CSV)</h4>
+                  <p className="text-sm text-blue-700 dark:text-blue-300">
+                    Paste CSV rows or upload Excel/CSV to create multiple customers at once. Required headers:
+                    <code className="ml-1 rounded bg-blue-100 px-1 dark:bg-gray-800">firstName,lastName,email,password,phone,companyName,contactName,customerPhone,street,city</code>
+                  </p>
+                </div>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <label className="inline-flex cursor-pointer items-center justify-center rounded-lg border border-stroke bg-white px-4 py-2 text-sm font-medium text-blue-900 hover:border-blue-900 dark:border-gray-600 dark:bg-gray-800 dark:text-white">
+                    Upload CSV/XLSX
+                    <input
+                      type="file"
+                      accept=".csv,.xlsx,.xls"
+                      className="hidden"
+                      onChange={handleBulkFileUpload}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={downloadBulkTemplateCsv}
+                    className="inline-flex items-center justify-center rounded-lg border border-stroke bg-white px-4 py-2 text-sm font-medium text-blue-900 hover:border-blue-900 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+                  >
+                    Download CSV Template
+                  </button>
+                  <button
+                    type="button"
+                    onClick={downloadBulkTemplateXlsx}
+                    className="inline-flex items-center justify-center rounded-lg border border-stroke bg-white px-4 py-2 text-sm font-medium text-blue-900 hover:border-blue-900 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+                  >
+                    Download Excel Template
+                  </button>
+                </div>
+                <textarea
+                  value={bulkCsvText}
+                  onChange={(e) => {
+                    const nextValue = e.target.value;
+                    setBulkCsvText(nextValue);
+                    const rows = parseBulkCsvRows(nextValue);
+                    const headerValidation = validateBulkHeaders(rows);
+                    if (!headerValidation.ok) {
+                      setBulkHeaderError(`Missing required columns: ${headerValidation.missing.join(", ")}`);
+                    } else {
+                      setBulkHeaderError("");
+                    }
+                  }}
+                  rows={7}
+                  placeholder={`firstName,lastName,email,password,phone,companyName,contactName,customerPhone,street,city,state,zip,country,customerType,managerProfileId\nAli,Khan,ali.khan@example.com,Pass1234,03001234567,Ali Traders,Ali Khan,03001234567,Main Road,Karachi,Sindh,74000,Pakistan,regular,`}
+                  className="w-full rounded-lg border border-stroke bg-white px-4 py-3 text-sm text-blue-900 focus:border-blue-900 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+                />
+                {bulkHeaderError && (
+                  <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
+                    {bulkHeaderError}
+                  </div>
+                )}
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <button
+                    type="button"
+                    onClick={handleBulkCreateCustomers}
+                    disabled={bulkLoading}
+                    className="inline-flex items-center justify-center rounded-lg bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-600 disabled:opacity-50"
+                  >
+                    {bulkLoading ? "Creating in bulk..." : "Create Customers in Bulk"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBulkCsvText("");
+                      setBulkResults(null);
+                      setBulkSummary(null);
+                      setBulkHeaderError("");
+                    }}
+                    className="inline-flex items-center justify-center rounded-lg border border-stroke bg-white px-4 py-2 text-sm font-medium text-blue-900 hover:border-blue-900 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+                  >
+                    Clear Bulk Data
+                  </button>
+                </div>
+                {bulkSummary && (
+                  <div className="rounded-lg border border-blue-900/20 bg-white p-3 text-sm text-blue-900 dark:border-gray-600 dark:bg-gray-800 dark:text-white">
+                    Total: <strong>{bulkSummary.total}</strong> | Created: <strong>{bulkSummary.created}</strong> | Failed: <strong>{bulkSummary.failed}</strong>
+                  </div>
+                )}
+                {bulkResults && bulkResults.length > 0 && (
+                  <div className="max-h-52 overflow-auto rounded-lg border border-stroke bg-white p-2 text-xs dark:border-gray-600 dark:bg-gray-800">
+                    <table className="min-w-full">
+                      <thead>
+                        <tr className="text-left text-blue-900 dark:text-blue-200">
+                          <th className="px-2 py-1">Row</th>
+                          <th className="px-2 py-1">Email</th>
+                          <th className="px-2 py-1">Status</th>
+                          <th className="px-2 py-1">Message</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {bulkResults.map((row, index) => (
+                          <tr key={`${row.row}-${row.email || index}`} className="border-t border-stroke dark:border-gray-700">
+                            <td className="px-2 py-1">{row.row}</td>
+                            <td className="px-2 py-1">{row.email || "-"}</td>
+                            <td className="px-2 py-1">{row.status}</td>
+                            <td className="px-2 py-1">{row.message || "-"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+
             {/* Basic Information */}
             <div>
               <h4 className="mb-4 text-lg font-medium text-blue-900 dark:text-white">

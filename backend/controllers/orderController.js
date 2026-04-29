@@ -136,7 +136,7 @@ const isCategoryManagerRequest = async (req, companyId) => {
 // Create order
 exports.createOrder = async (req, res) => {
   try {
-    const { customer, items, notes, attachment } = req.body;
+    const { customer, items, notes, attachment, deliveryCharges: deliveryChargesRaw, biltyCharges: biltyChargesRaw } = req.body;
     const companyId = req.headers['x-company-id'] || req.user?.company_id || "RESSICHEM";
 
     // ✅ Validate customer
@@ -146,6 +146,8 @@ exports.createOrder = async (req, res) => {
     }
 
     let subtotal = 0;
+    let totalDeliveryCharges = 0;
+    let totalBiltyCharges = 0;
     const orderItems = [];
     const categories = new Set();
 
@@ -166,8 +168,12 @@ exports.createOrder = async (req, res) => {
         return res.status(404).json({ message: `Product not found: ${item.product}` });
       }
 
-      const total = item.quantity * item.unitPrice;
+      const itemDeliveryCharges = Math.max(0, Number(item.deliveryCharges || 0));
+      const itemBiltyCharges = Math.max(0, Number(item.biltyCharges || 0));
+      const total = item.quantity * item.unitPrice + itemDeliveryCharges + itemBiltyCharges;
       subtotal += total;
+      totalDeliveryCharges += itemDeliveryCharges;
+      totalBiltyCharges += itemBiltyCharges;
 
       // Collect categories
       if (product.category?.mainCategory) {
@@ -178,12 +184,16 @@ exports.createOrder = async (req, res) => {
         product: product._id,
         quantity: item.quantity,
         unitPrice: item.unitPrice,
+        deliveryCharges: itemDeliveryCharges,
+        biltyCharges: itemBiltyCharges,
         total,
         tdsLink: item.tdsLink || "", // Include TDS link if provided
       });
     }
 
-    const tax = subtotal * 0.1; // ✅ example 10% tax
+    const tax = 0;
+    const deliveryCharges = Math.max(0, Number(deliveryChargesRaw || totalDeliveryCharges || 0));
+    const biltyCharges = Math.max(0, Number(biltyChargesRaw || totalBiltyCharges || 0));
     const total = subtotal + tax;
 
     // Generate unique order number
@@ -229,6 +239,8 @@ exports.createOrder = async (req, res) => {
       items: orderItems,
       subtotal,
       tax,
+      deliveryCharges,
+      biltyCharges,
       total,
       notes,
       customerNotes: notes,
@@ -965,41 +977,49 @@ exports.getOrderById = async (req, res) => {
         approvalMap.set(approval.itemIndex, approval);
       });
       
-      // Filter items to only include those assigned to this manager via OrderItemApproval
+      const normalizeCategory = (value) =>
+        String(value || "")
+          .toLowerCase()
+          .trim()
+          .replace(/\s*&\s*/g, " and ")
+          .replace(/\s+and\s+/g, " and ")
+          .replace(/\bspeciality\b/g, "specialty")
+          .replace(/\s+/g, " ");
+      const normalizedManagerCategories = managerCategories.map(normalizeCategory).filter(Boolean);
+
+      // Filter items for manager:
+      // - include items explicitly assigned via approval rows
+      // - also include category-matching items (fallback for newly added rows)
       const filteredItems = order.items.filter((item, index) => {
-        // Check if this item has an approval entry assigned to this manager
         const hasApprovalEntry = approvalMap.has(index);
-        
-        if (!hasApprovalEntry) {
-          console.log(`   ⚠️ Item ${index} (${item.product?.name}) not assigned to manager ${req.user?.email}`);
-          return false;
-        }
-        
-        // Also verify category matches (double check)
         if (!item.product?.category) {
           console.log(`   ⚠️ Item ${index} has no category`);
           return false;
         }
-        
-        const productCategory = item.product.category;
-        const categoryMatches = managerCategories.some(managerCat => {
-          if (typeof productCategory === 'string') {
-            return productCategory.includes(managerCat) || managerCat.includes(productCategory);
-          }
-          return (
-            productCategory.mainCategory === managerCat ||
-            productCategory.subCategory === managerCat ||
-            productCategory.subSubCategory === managerCat ||
-            (productCategory.mainCategory && productCategory.mainCategory.includes(managerCat)) ||
-            (productCategory.subCategory && productCategory.subCategory.includes(managerCat))
-          );
-        });
-        
+
+        const productCategoryRaw =
+          typeof item.product.category === "string"
+            ? item.product.category
+            : item.product.category?.mainCategory ||
+              item.product.category?.subCategory ||
+              item.product.category?.subSubCategory ||
+              "";
+        const normalizedProductCategory = normalizeCategory(productCategoryRaw);
+        const categoryMatches = normalizedManagerCategories.some(
+          (managerCat) =>
+            normalizedProductCategory === managerCat ||
+            normalizedProductCategory.includes(managerCat) ||
+            managerCat.includes(normalizedProductCategory)
+        );
+
+        if (!hasApprovalEntry && !categoryMatches) {
+          console.log(`   ⚠️ Item ${index} (${item.product?.name}) not assigned/category-matched for manager ${req.user?.email}`);
+          return false;
+        }
         if (!categoryMatches) {
           console.log(`   ⚠️ Item ${index} category doesn't match manager's categories`);
         }
-        
-        return categoryMatches;
+        return true;
       });
       
       console.log(`   ✅ Filtered to ${filteredItems.length} items assigned to this manager`);
@@ -1022,7 +1042,7 @@ exports.getOrderById = async (req, res) => {
 // Update order status
 exports.updateOrderStatus = async (req, res) => {
   try {
-    const { status, comments, discountAmount } = req.body;
+    const { status, comments, discountAmount, partialShipmentItems } = req.body;
     const oldOrder = await Order.findById(req.params.id);
     if (!oldOrder) return res.status(404).json({ message: "Order not found" });
 
@@ -1030,6 +1050,11 @@ exports.updateOrderStatus = async (req, res) => {
     const allowedStatuses = await getAllowedStatusesForUserAsync(req, companyId);
     if (status && !allowedStatuses.includes(String(status).toLowerCase())) {
       return res.status(400).json({ message: `Invalid status. Allowed statuses are: ${allowedStatuses.join(", ")}.` });
+    }
+    if (String(status || "").toLowerCase() === "hold" && !String(comments || "").trim()) {
+      return res.status(400).json({
+        message: "Reason is required when setting status to hold.",
+      });
     }
 
     if (status && (await isLogisticManagerRequest(req, companyId))) {
@@ -1054,6 +1079,13 @@ exports.updateOrderStatus = async (req, res) => {
         return res.status(400).json({
           message: "Reason is required when setting status to hold, dispatch, or partial_shipment.",
         });
+      }
+      if (newS === "partial_shipment") {
+        if (!Array.isArray(partialShipmentItems) || partialShipmentItems.length === 0) {
+          return res.status(400).json({
+            message: "Partial shipment item details are required.",
+          });
+        }
       }
     }
 
@@ -1096,10 +1128,39 @@ exports.updateOrderStatus = async (req, res) => {
       String(comments || "").trim()
     ) {
       const dispatchRemark = String(comments).trim();
+      const normalizedDispatchItems = Array.isArray(partialShipmentItems)
+        ? partialShipmentItems
+          .map((item) => {
+            const orderedQuantity = Number(item?.orderedQuantity);
+            const shippedQuantity = Number(item?.shippedQuantity);
+            const remainingQuantity = Number(item?.remainingQuantity);
+            const safeOrdered = Number.isFinite(orderedQuantity) ? orderedQuantity : 0;
+            const safeShipped = Number.isFinite(shippedQuantity) ? shippedQuantity : 0;
+            const safeRemaining = Number.isFinite(remainingQuantity)
+              ? remainingQuantity
+              : Math.max(safeOrdered - safeShipped, 0);
+            return {
+              productId: item?.productId || undefined,
+              productName: String(item?.productName || "").trim(),
+              orderedQuantity: safeOrdered,
+              shippedQuantity: safeShipped,
+              remainingQuantity: safeRemaining,
+            };
+          })
+          .filter((item) =>
+            (item.productId || item.productName) &&
+            item.orderedQuantity >= 0 &&
+            item.shippedQuantity >= 0 &&
+            item.remainingQuantity >= 0 &&
+            item.shippedQuantity <= item.orderedQuantity &&
+            item.remainingQuantity === item.orderedQuantity - item.shippedQuantity
+          )
+        : [];
       const currentRemarks = Array.isArray(oldOrder.logisticsRemarks) ? [...oldOrder.logisticsRemarks] : [];
       currentRemarks.push({
         status: "dispatch",
         remark: dispatchRemark,
+        ...(normalizedDispatchItems.length ? { partialShipmentItems: normalizedDispatchItems } : {}),
         createdAt: new Date(),
         createdBy: actorMeta.userId,
         createdByEmail: actorMeta.email,
@@ -1111,10 +1172,54 @@ exports.updateOrderStatus = async (req, res) => {
       String(comments || "").trim()
     ) {
       const partialShipmentRemark = String(comments).trim();
+      const normalizedPartialItems = Array.isArray(partialShipmentItems)
+        ? partialShipmentItems
+          .map((item) => {
+            const orderedQuantity = Number(item?.orderedQuantity);
+            const shippedQuantity = Number(item?.shippedQuantity);
+            const remainingQuantity = Number(item?.remainingQuantity);
+            const safeOrdered = Number.isFinite(orderedQuantity) ? orderedQuantity : 0;
+            const safeShipped = Number.isFinite(shippedQuantity) ? shippedQuantity : 0;
+            const safeRemaining = Number.isFinite(remainingQuantity)
+              ? remainingQuantity
+              : Math.max(safeOrdered - safeShipped, 0);
+            return {
+              productId: item?.productId || undefined,
+              productName: String(item?.productName || "").trim(),
+              orderedQuantity: safeOrdered,
+              shippedQuantity: safeShipped,
+              remainingQuantity: safeRemaining,
+            };
+          })
+          .filter((item) =>
+            (item.productId || item.productName) &&
+            item.orderedQuantity > 0 &&
+            item.shippedQuantity >= 0 &&
+            item.remainingQuantity >= 0 &&
+            item.shippedQuantity <= item.orderedQuantity &&
+            item.remainingQuantity === item.orderedQuantity - item.shippedQuantity
+          )
+        : [];
+
+      if (!normalizedPartialItems.length) {
+        return res.status(400).json({
+          message: "Provide valid partial shipment quantities (shipped and remaining) for at least one item.",
+        });
+      }
+
+      const shippedAny = normalizedPartialItems.some((item) => item.shippedQuantity > 0);
+      const hasRemainingAny = normalizedPartialItems.some((item) => item.remainingQuantity > 0);
+      if (!shippedAny || !hasRemainingAny) {
+        return res.status(400).json({
+          message: "Partial shipment requires at least one shipped quantity and at least one remaining quantity.",
+        });
+      }
+
       const currentRemarks = Array.isArray(oldOrder.logisticsRemarks) ? [...oldOrder.logisticsRemarks] : [];
       currentRemarks.push({
         status: "partial_shipment",
         remark: partialShipmentRemark,
+        partialShipmentItems: normalizedPartialItems,
         createdAt: new Date(),
         createdBy: actorMeta.userId,
         createdByEmail: actorMeta.email,
@@ -1198,7 +1303,7 @@ exports.updateOrderStatus = async (req, res) => {
 // Update order (general update)
 exports.updateOrder = async (req, res) => {
   try {
-    const { status, notes, subtotal, tax, total, attachment, items } = req.body;
+    const { status, notes, subtotal, tax, total, attachment, items, deliveryCharges, biltyCharges } = req.body;
     const companyId = req.headers['x-company-id'] || req.user?.company_id || "RESSICHEM";
     
     const oldOrder = await Order.findOne({ _id: req.params.id, company_id: companyId });
@@ -1211,6 +1316,8 @@ exports.updateOrder = async (req, res) => {
         subtotal !== undefined ||
         tax !== undefined ||
         total !== undefined ||
+        deliveryCharges !== undefined ||
+        biltyCharges !== undefined ||
         attachment !== undefined ||
         Array.isArray(items);
       if (attemptedNonStatusUpdate) {
@@ -1271,16 +1378,22 @@ exports.updateOrder = async (req, res) => {
       updateData.status = normalizedStatus;
     }
     if (notes !== undefined) updateData.notes = notes;
+    let managerAddedItemsMeta = [];
     if (Array.isArray(items)) {
       const normalizedItems = items.map((item) => {
         const quantity = Math.max(1, Number(item?.quantity || 1));
         const unitPrice = Math.max(0, Number(item?.unitPrice || 0));
+        const lineDeliveryCharges = Math.max(0, Number(item?.deliveryCharges || 0));
+        const lineBiltyCharges = Math.max(0, Number(item?.biltyCharges || 0));
         const productId = item?.product?._id || item?.product;
         return {
+          _id: item?._id || undefined,
           product: productId,
           quantity,
           unitPrice,
-          total: quantity * unitPrice,
+          deliveryCharges: lineDeliveryCharges,
+          biltyCharges: lineBiltyCharges,
+          total: quantity * unitPrice + lineDeliveryCharges + lineBiltyCharges,
           tdsLink: item?.tdsLink || "",
         };
       });
@@ -1290,14 +1403,14 @@ exports.updateOrder = async (req, res) => {
         return res.status(400).json({ message: "Each order item must include a valid product id." });
       }
 
-      // Strict item-level RBAC for category managers:
-      // they may edit only item rows assigned to them via OrderItemApproval.
+      // Strict item-level RBAC for category managers.
+      // Managers may edit assigned rows and add/remove only within their assigned categories.
       if (await isCategoryManagerRequest(req, companyId)) {
         const fullUser = req.user?.user_id
           ? await User.findOne({
               user_id: req.user.user_id,
               company_id: companyId,
-            }).select("_id")
+            }).select("_id managerProfile user_id")
           : null;
 
         if (!fullUser?._id) {
@@ -1312,37 +1425,119 @@ exports.updateOrder = async (req, res) => {
           .select("itemIndex")
           .lean();
         const editableIndices = new Set(editableRows.map((row) => Number(row.itemIndex)));
-
-        if ((oldOrder.items || []).length !== normalizedItems.length) {
+        const managerCategoriesRaw = Array.isArray(fullUser.managerProfile?.assignedCategories)
+          ? fullUser.managerProfile.assignedCategories
+          : [];
+        let managerCategories = managerCategoriesRaw
+          .map((cat) =>
+            typeof cat === "string"
+              ? cat
+              : cat?.category || cat?.name || ""
+          )
+          .filter(Boolean);
+        if (managerCategories.length === 0) {
+          const managerRecord = await Manager.findOne({
+            user_id: fullUser.user_id || req.user?.user_id,
+            company_id: companyId,
+          }).select("assignedCategories");
+          if (managerRecord?.assignedCategories?.length) {
+            managerCategories = managerRecord.assignedCategories
+              .map((cat) => (typeof cat === "string" ? cat : cat?.category || cat?.name || ""))
+              .filter(Boolean);
+          }
+        }
+        const normalizeCategory = (value) =>
+          String(value || "")
+            .toLowerCase()
+            .trim()
+            .replace(/\s*&\s*/g, " and ")
+            .replace(/\s+and\s+/g, " and ")
+            .replace(/\bspeciality\b/g, "specialty")
+            .replace(/\s+/g, " ");
+        const normalizedManagerCategories = managerCategories.map(normalizeCategory).filter(Boolean);
+        if (normalizedManagerCategories.length === 0) {
           return res.status(403).json({
-            message: "Managers cannot add/remove order items; only assigned item quantities/prices can be edited.",
+            message: "No assigned categories found for manager; item add/edit is blocked.",
           });
         }
 
-        for (let index = 0; index < normalizedItems.length; index++) {
+        const oldItems = Array.isArray(oldOrder.items) ? oldOrder.items : [];
+        if (normalizedItems.length < oldItems.length) {
+          return res.status(403).json({
+            message: "Managers cannot remove existing order items; only add new category-allowed items.",
+          });
+        }
+
+        for (let index = 0; index < oldItems.length; index++) {
+          const oldItem = oldItems[index];
           const nextItem = normalizedItems[index];
-          const oldItem = oldOrder.items[index];
-          if (!oldItem) {
+          if (!nextItem) {
             return res.status(403).json({ message: "Invalid item update payload." });
           }
 
-          const oldProductId = String(oldItem.product || "");
+          const oldProductId = String(oldItem?.product || "");
           const nextProductId = String(nextItem.product || "");
           if (oldProductId !== nextProductId) {
             return res.status(403).json({
-              message: "Managers cannot change product mapping for order items.",
+              message: "Managers cannot change product mapping for existing order items.",
             });
           }
 
-          const oldQuantity = Number(oldItem.quantity || 0);
-          const oldUnitPrice = Number(oldItem.unitPrice || 0);
+          const oldQuantity = Number(oldItem?.quantity || 0);
+          const oldUnitPrice = Number(oldItem?.unitPrice || 0);
+          const oldDeliveryCharges = Number(oldItem?.deliveryCharges || 0);
+          const oldBiltyCharges = Number(oldItem?.biltyCharges || 0);
           const changedByManager =
             oldQuantity !== Number(nextItem.quantity) ||
-            oldUnitPrice !== Number(nextItem.unitPrice);
+            oldUnitPrice !== Number(nextItem.unitPrice) ||
+            oldDeliveryCharges !== Number(nextItem.deliveryCharges || 0) ||
+            oldBiltyCharges !== Number(nextItem.biltyCharges || 0) ||
+            String(oldItem?.tdsLink || "") !== String(nextItem.tdsLink || "");
 
           if (changedByManager && !editableIndices.has(index)) {
             return res.status(403).json({
               message: `You can edit only your assigned items. Item ${index + 1} is locked.`,
+            });
+          }
+        }
+
+        const newItems = normalizedItems.slice(oldItems.length);
+        if (newItems.length > 0) {
+          const newProductIds = [...new Set(newItems.map((item) => String(item.product || "").trim()).filter(Boolean))];
+          const productDocs = await Product.find({
+            _id: { $in: newProductIds },
+            company_id: companyId,
+          }).select("_id category");
+          const productById = new Map(productDocs.map((p) => [String(p._id), p]));
+
+          for (let i = 0; i < newItems.length; i++) {
+            const newItem = newItems[i];
+            const productId = String(newItem.product || "").trim();
+            const productDoc = productById.get(productId);
+            if (!productDoc) {
+              return res.status(400).json({ message: "Invalid product in new manager-added item." });
+            }
+            const rawCategory =
+              typeof productDoc.category === "string"
+                ? productDoc.category
+                : productDoc.category?.mainCategory || "";
+            const normalizedProductCategory = normalizeCategory(rawCategory);
+            const allowed = normalizedManagerCategories.some(
+              (managerCat) =>
+                normalizedProductCategory === managerCat ||
+                normalizedProductCategory.includes(managerCat) ||
+                managerCat.includes(normalizedProductCategory)
+            );
+            if (!allowed) {
+              return res.status(403).json({
+                message: "Managers can only add items from their assigned categories.",
+              });
+            }
+            managerAddedItemsMeta.push({
+              itemIndex: oldItems.length + i,
+              productId,
+              category: rawCategory,
+              originalAmount: Number(newItem.total || 0),
             });
           }
         }
@@ -1353,16 +1548,27 @@ exports.updateOrder = async (req, res) => {
         (sum, item) => sum + Number(item.total || 0),
         0
       );
+      const recalculatedDeliveryCharges = normalizedItems.reduce(
+        (sum, item) => sum + Number(item.deliveryCharges || 0),
+        0
+      );
+      const recalculatedBiltyCharges = normalizedItems.reduce(
+        (sum, item) => sum + Number(item.biltyCharges || 0),
+        0
+      );
       updateData.subtotal = recalculatedSubtotal;
       updateData.tax = 0; // Tax is removed from this workflow.
+      updateData.deliveryCharges = recalculatedDeliveryCharges;
+      updateData.biltyCharges = recalculatedBiltyCharges;
       updateData.total = recalculatedSubtotal;
-      const existingDiscount = Number(oldOrder.totalDiscount || 0);
-      updateData.totalDiscount = existingDiscount;
-      updateData.finalTotal = Math.max(0, recalculatedSubtotal - existingDiscount);
+      updateData.totalDiscount = 0;
+      updateData.finalTotal = updateData.total;
     } else {
       if (subtotal !== undefined) updateData.subtotal = subtotal;
       if (tax !== undefined) updateData.tax = tax;
       if (total !== undefined) updateData.total = total;
+      if (deliveryCharges !== undefined) updateData.deliveryCharges = Math.max(0, Number(deliveryCharges || 0));
+      if (biltyCharges !== undefined) updateData.biltyCharges = Math.max(0, Number(biltyCharges || 0));
     }
     if (attachment !== undefined) {
       if (attachment === null) {
@@ -1406,6 +1612,58 @@ exports.updateOrder = async (req, res) => {
       updateData,
       { new: true }
     ).populate('customer', 'companyName contactName email');
+
+    if (managerAddedItemsMeta.length > 0) {
+      const approvalsToCreate = [];
+      for (const row of managerAddedItemsMeta) {
+        const managers = await itemApprovalService.getManagersForCategory(
+          row.category,
+          companyId,
+          oldOrder.customer
+        );
+        if (!managers || managers.length === 0) {
+          approvalsToCreate.push({
+            orderId: oldOrder._id,
+            itemIndex: row.itemIndex,
+            product: row.productId,
+            category: row.category,
+            assignedManager: null,
+            status: "approved",
+            approvedBy: null,
+            approvedAt: new Date(),
+            originalAmount: row.originalAmount,
+            company_id: companyId,
+          });
+        } else if (managers.length === 1) {
+          approvalsToCreate.push({
+            orderId: oldOrder._id,
+            itemIndex: row.itemIndex,
+            product: row.productId,
+            category: row.category,
+            assignedManager: managers[0]._id,
+            status: "pending",
+            originalAmount: row.originalAmount,
+            company_id: companyId,
+          });
+        } else {
+          for (const manager of managers) {
+            approvalsToCreate.push({
+              orderId: oldOrder._id,
+              itemIndex: row.itemIndex,
+              product: row.productId,
+              category: row.category,
+              assignedManager: manager._id,
+              status: "pending",
+              originalAmount: row.originalAmount,
+              company_id: companyId,
+            });
+          }
+        }
+      }
+      if (approvalsToCreate.length > 0) {
+        await OrderItemApproval.insertMany(approvalsToCreate);
+      }
+    }
 
     // Send notification about order status change if status was updated
     if (status && status !== oldOrder.status) {

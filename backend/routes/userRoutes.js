@@ -125,6 +125,10 @@ router.get("/", auth, async (req, res) => {
       "customerProfile.customer_id",
       "customerProfile.companyName",
       "customerProfile.customerType",
+      "customerProfile.assignedManager.manager_id",
+      "customerProfile.assignedManager.assignedBy",
+      "customerProfile.assignedManager.assignedAt",
+      "customerProfile.assignedManager.isActive",
       "managerProfile.manager_id",
       "managerProfile.assignedCategories",
       "createdAt",
@@ -208,6 +212,7 @@ router.post("/test", async (req, res) => {
 
 // User creation endpoint using userController (supports customer creation)
 router.post("/create", auth, userController.createUser);
+router.post("/bulk-create", auth, userController.bulkCreateCustomers);
 
 // Create user (admin-only)
 router.post(
@@ -313,7 +318,7 @@ router.put(
 router.delete(
   "/:id",
   auth,
-  permissionMiddleware(["delete_user"]),
+  permissionMiddleware(["users.delete"]),
   async (req, res) => {
     try {
       const deleted = await User.findByIdAndDelete(req.params.id);

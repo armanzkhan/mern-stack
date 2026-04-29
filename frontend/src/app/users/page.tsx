@@ -3,11 +3,11 @@
 import { ProtectedRoute } from "@/components/Auth/ProtectedRoute";
 import { PermissionGate } from "@/components/Auth/PermissionGate";
 import Breadcrumb from "@/components/Breadcrumbs/Breadcrumb";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useRealtimeUsers } from "@/hooks/useRealtimeUsers";
-import { getAuthHeaders } from "@/lib/auth";
+import { getAuthHeaders, handleAuthError } from "@/lib/auth";
 import { Wifi, WifiOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -65,6 +65,10 @@ interface User {
 
 export default function UsersPage() {
   const router = useRouter();
+  const REPORT_FILTER_MATCHED_ROWS = "ReportMatchedRows";
+  const REPORT_FILTER_UNIQUE_MAPPED = "ReportUniqueMappedCustomers";
+  const REPORT_FILTER_PARSED_ROWS = "ReportParsedRows";
+  const REPORT_FILTER_UNRESOLVED_ROWS = "ReportUnresolvedRows";
   
   // Use real-time users hook
   const { users, isConnected, refreshUsers, addUser, updateUser, removeUser } = useRealtimeUsers();
@@ -72,6 +76,21 @@ export default function UsersPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterRole, setFilterRole] = useState("");
+  const [selectedManagerByUserId, setSelectedManagerByUserId] = useState<Record<string, string>>({});
+  const [selectedCustomerIds, setSelectedCustomerIds] = useState<Record<string, boolean>>({});
+  const [bulkManagerProfileId, setBulkManagerProfileId] = useState("");
+  const [bulkAssigning, setBulkAssigning] = useState(false);
+  const [assigningUserId, setAssigningUserId] = useState<string | null>(null);
+  const [assignmentReportStats, setAssignmentReportStats] = useState<{
+    parsedRows: number;
+    matchedRows: number;
+    uniqueMappedCustomers: number;
+    duplicateMappedRows: number;
+    unresolvedRows: number;
+    reportPhones: string[];
+    unresolvedPhones: string[];
+    generatedAt: string | null;
+  } | null>(null);
   const lastRefreshAtRef = useRef(0);
 
   // Fetch users (now using real-time hook)
@@ -116,8 +135,122 @@ export default function UsersPage() {
     return () => clearInterval(interval);
   }, []);
 
+  useEffect(() => {
+    const fetchAssignmentReportStats = async () => {
+      try {
+        const response = await fetch("/api/users/customer-assignment-stats", {
+          headers: getAuthHeaders(),
+        });
+        if (!response.ok) return;
+        const data = await response.json();
+        setAssignmentReportStats(data);
+      } catch (error) {
+        console.error("Failed to load customer assignment report stats:", error);
+      }
+    };
+
+    fetchAssignmentReportStats();
+  }, []);
+
+  const isCustomerUser = (user: User) =>
+    Boolean(user.role === 'Customer' || user.isCustomer || user.customerProfile?.customer_id);
+
+  const hasAssignedManager = (user: User) =>
+    Boolean(
+      user.customerProfile?.assignedManager?.manager_id &&
+      user.customerProfile?.assignedManager?.isActive !== false
+    );
+  const normalizePhone = (value?: string) => String(value || "").replace(/\D/g, "");
+  const reportPhoneSet = useMemo(
+    () => new Set((assignmentReportStats?.reportPhones || []).map((phone) => normalizePhone(phone))),
+    [assignmentReportStats]
+  );
+  const unresolvedPhoneSet = useMemo(
+    () => new Set((assignmentReportStats?.unresolvedPhones || []).map((phone) => normalizePhone(phone))),
+    [assignmentReportStats]
+  );
+
+  const totalCustomers = users.filter(isCustomerUser).length;
+  const customersWithAssignedManagers = users.filter((user) => isCustomerUser(user) && hasAssignedManager(user)).length;
+  const customersWithoutAssignedManagers = Math.max(0, totalCustomers - customersWithAssignedManagers);
+  const managerNameByProfileId = users.reduce((acc, user) => {
+    if (!user.isManager || !user.managerProfile?.manager_id) return acc;
+    const managerProfileId = String(user.managerProfile.manager_id);
+    const fullName = `${user.firstName || ""} ${user.lastName || ""}`.trim();
+    acc.set(managerProfileId, fullName || user.email || "Unknown Manager");
+    return acc;
+  }, new Map<string, string>());
+  const managerOptions = users
+    .filter((user) => Boolean(user.isManager && user.managerProfile?.manager_id))
+    .map((user) => ({
+      managerProfileId: String(user.managerProfile?.manager_id),
+      label: `${user.firstName || ""} ${user.lastName || ""}`.trim() || user.email || "Unknown Manager",
+    }));
+  const handleStatCardClick = (nextFilter: string) => {
+    setFilterRole((prev) => (prev === nextFilter ? "" : nextFilter));
+    setSearchTerm("");
+  };
+  const shouldRedirectForAuthError = (status: number, message: string) =>
+    status === 401 ||
+    (status === 403 && /expired|invalid token|unauthorized|jwt/i.test(String(message || "")));
+
+  const isUnassignedCustomer = (user: User) => isCustomerUser(user) && !hasAssignedManager(user);
+  const isManageableCustomer = (user: User) => isCustomerUser(user);
+
+  const handleAssignManager = async (customerUser: User) => {
+    const currentManagerProfileId = String(customerUser.customerProfile?.assignedManager?.manager_id || "");
+    const selectedManagerProfileId = selectedManagerByUserId[customerUser._id] || currentManagerProfileId;
+    if (!selectedManagerProfileId) {
+      alert("Please select a manager first.");
+      return;
+    }
+
+    try {
+      setAssigningUserId(customerUser._id);
+      const response = await fetch(`/api/users/${customerUser._id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          ...getAuthHeaders(),
+        },
+        body: JSON.stringify({
+          "customerProfile.assignedManager.manager_id": selectedManagerProfileId,
+          "customerProfile.assignedManager.assignedAt": new Date().toISOString(),
+          "customerProfile.assignedManager.isActive": true,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage = String(errorData.error || errorData.message || "");
+        if (shouldRedirectForAuthError(response.status, errorMessage) && handleAuthError(response.status, "Please log in again to continue")) {
+          return;
+        }
+        throw new Error(errorData.error || errorData.message || "Failed to assign manager");
+      }
+
+      await refreshUsers();
+      setSelectedCustomerIds((prev) => {
+        const next = { ...prev };
+        delete next[customerUser._id];
+        return next;
+      });
+      setSelectedManagerByUserId((prev) => {
+        const next = { ...prev };
+        delete next[customerUser._id];
+        return next;
+      });
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Failed to assign manager");
+    } finally {
+      setAssigningUserId(null);
+    }
+  };
+
   // Filter users
   const filteredUsers = users.filter(user => {
+    const customerUser = isCustomerUser(user);
+    const customerHasAssignedManager = hasAssignedManager(user);
     const searchLower = searchTerm.toLowerCase();
     
     // Check if search term matches name or email
@@ -142,7 +275,7 @@ export default function UsersPage() {
       }
       // If searching for "customer", only show actual customers
       else if (searchLowerTrimmed === 'customer' || searchLowerTrimmed === 'customers') {
-        matchesRoleFromSearch = Boolean(user.isCustomer === true || user.role === 'Customer' || user.customerProfile?.customer_id);
+        matchesRoleFromSearch = customerUser;
         // If search term is "customer" but user is not a customer, don't show even if name matches
         if (!matchesRoleFromSearch) {
           return false;
@@ -161,15 +294,34 @@ export default function UsersPage() {
     // Enhanced role matching logic for dropdown filter
     let matchesRole = true;
     if (filterRole) {
-      if (filterRole === 'Company Admin') {
+      if (filterRole === 'Administrators') {
+        matchesRole = Boolean(
+          user.role === 'Super Admin' ||
+          user.isSuperAdmin ||
+          user.isCompanyAdmin ||
+          user.role === 'Company Admin'
+        );
+      } else if (filterRole === 'Company Admin') {
         matchesRole = Boolean(user.role === 'Company Admin' || user.isCompanyAdmin || user.department === 'Administration') && 
                      !user.isCustomer && !user.isManager;
       } else if (filterRole === 'Super Admin') {
         matchesRole = Boolean(user.role === 'Super Admin' || user.isSuperAdmin) && 
                      !user.isCustomer && !user.isManager;
       } else if (filterRole === 'Customer') {
-        matchesRole = Boolean(user.role === 'Customer' || user.isCustomer || user.customerProfile?.customer_id) && 
+        matchesRole = customerUser && 
                      !user.isManager && !user.isCompanyAdmin && !user.isSuperAdmin;
+      } else if (filterRole === 'CustomerAssigned') {
+        matchesRole = customerUser && customerHasAssignedManager;
+      } else if (filterRole === 'CustomerUnassigned') {
+        matchesRole = customerUser && !customerHasAssignedManager;
+      } else if (filterRole === REPORT_FILTER_MATCHED_ROWS) {
+        matchesRole = customerUser && customerHasAssignedManager && reportPhoneSet.has(normalizePhone(user.phone));
+      } else if (filterRole === REPORT_FILTER_UNIQUE_MAPPED) {
+        matchesRole = customerUser && customerHasAssignedManager && reportPhoneSet.has(normalizePhone(user.phone));
+      } else if (filterRole === REPORT_FILTER_PARSED_ROWS) {
+        matchesRole = customerUser && reportPhoneSet.has(normalizePhone(user.phone));
+      } else if (filterRole === REPORT_FILTER_UNRESOLVED_ROWS) {
+        matchesRole = customerUser && unresolvedPhoneSet.has(normalizePhone(user.phone));
       } else if (filterRole === 'Manager') {
         // When filtering for Manager, ensure user is actually a manager AND NOT a customer
         // Priority: If user has isCustomer flag set to true, exclude them from manager list
@@ -181,6 +333,8 @@ export default function UsersPage() {
       } else if (filterRole === 'Staff') {
         // Staff = same as "Staff Members" card: everyone who is NOT Super Admin
         matchesRole = user.role !== 'Super Admin' && !user.isSuperAdmin;
+      } else if (filterRole === 'AllUsers') {
+        matchesRole = true;
       } else {
         matchesRole = (user.role || user.department || 'Staff') === filterRole;
       }
@@ -189,6 +343,151 @@ export default function UsersPage() {
     // Combine search and role filters
     return matchesNameOrEmail && matchesRoleFromSearch && matchesRole;
   });
+
+  const bulkManageableUsers = filteredUsers.filter(isManageableCustomer);
+  const selectedBulkCount = bulkManageableUsers.filter((user) => selectedCustomerIds[user._id]).length;
+  const allBulkSelected = bulkManageableUsers.length > 0 && selectedBulkCount === bulkManageableUsers.length;
+
+  const toggleSelectAllBulk = () => {
+    setSelectedCustomerIds((prev) => {
+      const next = { ...prev };
+      if (allBulkSelected) {
+        for (const user of bulkManageableUsers) delete next[user._id];
+      } else {
+        for (const user of bulkManageableUsers) next[user._id] = true;
+      }
+      return next;
+    });
+  };
+
+  const handleBulkAssign = async () => {
+    if (!bulkManagerProfileId) {
+      alert("Please select a manager for bulk assignment.");
+      return;
+    }
+
+    const targets = bulkManageableUsers.filter((user) => selectedCustomerIds[user._id]);
+    if (targets.length === 0) {
+      alert("Please select at least one unassigned customer.");
+      return;
+    }
+
+    try {
+      setBulkAssigning(true);
+      const nowIso = new Date().toISOString();
+      const chunkSize = 100;
+      let successCount = 0;
+      let failureCount = 0;
+
+      for (let i = 0; i < targets.length; i += chunkSize) {
+        const chunk = targets.slice(i, i + chunkSize);
+        const results = await Promise.all(
+          chunk.map(async (customerUser) => {
+            const response = await fetch(`/api/users/${customerUser._id}`, {
+              method: "PUT",
+              headers: {
+                "Content-Type": "application/json",
+                ...getAuthHeaders(),
+              },
+              body: JSON.stringify({
+                "customerProfile.assignedManager.manager_id": bulkManagerProfileId,
+                "customerProfile.assignedManager.assignedAt": nowIso,
+                "customerProfile.assignedManager.isActive": true,
+              }),
+            });
+            if (!response.ok) {
+              const errorData = await response.json().catch(() => ({}));
+              const errorMessage = String(errorData.error || errorData.message || "");
+              if (shouldRedirectForAuthError(response.status, errorMessage) && handleAuthError(response.status, "Please log in again to continue")) {
+                throw new Error("Authentication required");
+              }
+            }
+            return response.ok;
+          })
+        );
+
+        for (const ok of results) {
+          if (ok) successCount += 1;
+          else failureCount += 1;
+        }
+      }
+
+      await refreshUsers();
+      setSelectedCustomerIds({});
+      alert(`Bulk assignment finished. Assigned: ${successCount}, Failed: ${failureCount}.`);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Bulk assignment failed");
+    } finally {
+      setBulkAssigning(false);
+    }
+  };
+
+  const handleApplyAllAssignments = async () => {
+    const targets = bulkManageableUsers.filter((user) => selectedCustomerIds[user._id]);
+    if (targets.length === 0) {
+      alert("Please select at least one unassigned customer.");
+      return;
+    }
+
+    const targetsWithManager = targets.filter((user) => Boolean(selectedManagerByUserId[user._id]));
+    if (targetsWithManager.length === 0) {
+      alert("Please select a manager on the selected customer cards before applying.");
+      return;
+    }
+
+    try {
+      setBulkAssigning(true);
+      const chunkSize = 100;
+      let successCount = 0;
+      let failureCount = 0;
+      const nowIso = new Date().toISOString();
+
+      for (let i = 0; i < targetsWithManager.length; i += chunkSize) {
+        const chunk = targetsWithManager.slice(i, i + chunkSize);
+        const results = await Promise.all(
+          chunk.map(async (customerUser) => {
+            const managerProfileId = selectedManagerByUserId[customerUser._id];
+            const response = await fetch(`/api/users/${customerUser._id}`, {
+              method: "PUT",
+              headers: {
+                "Content-Type": "application/json",
+                ...getAuthHeaders(),
+              },
+              body: JSON.stringify({
+                "customerProfile.assignedManager.manager_id": managerProfileId,
+                "customerProfile.assignedManager.assignedAt": nowIso,
+                "customerProfile.assignedManager.isActive": true,
+              }),
+            });
+            if (!response.ok) {
+              const errorData = await response.json().catch(() => ({}));
+              const errorMessage = String(errorData.error || errorData.message || "");
+              if (shouldRedirectForAuthError(response.status, errorMessage) && handleAuthError(response.status, "Please log in again to continue")) {
+                throw new Error("Authentication required");
+              }
+            }
+            return response.ok;
+          })
+        );
+
+        for (const ok of results) {
+          if (ok) successCount += 1;
+          else failureCount += 1;
+        }
+      }
+
+      const skippedCount = targets.length - targetsWithManager.length;
+      await refreshUsers();
+      setSelectedCustomerIds({});
+      alert(
+        `Apply All finished. Assigned: ${successCount}, Failed: ${failureCount}, Skipped (no manager selected): ${skippedCount}.`
+      );
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Apply All failed");
+    } finally {
+      setBulkAssigning(false);
+    }
+  };
 
   // Handle delete user
   const handleDeleteUser = async (userId: string, userName: string) => {
@@ -213,6 +512,9 @@ export default function UsersPage() {
       } else {
         const errorData = await response.json().catch(() => ({}));
         const errorMessage = errorData.error || errorData.message || 'Unknown error occurred';
+        if (shouldRedirectForAuthError(response.status, String(errorMessage)) && handleAuthError(response.status, "Please log in again to continue")) {
+          return;
+        }
         console.error('Failed to delete user:', errorMessage);
         alert(`Failed to delete user: ${errorMessage}`);
       }
@@ -306,7 +608,15 @@ export default function UsersPage() {
           {/* Stats Cards */}
           <div className="mb-4 sm:mb-6 lg:mb-8">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3 lg:gap-4 xl:gap-6">
-              <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-lg sm:rounded-xl lg:rounded-2xl shadow-md sm:shadow-lg lg:shadow-xl border border-white/20 dark:border-gray-700/20 p-3 sm:p-4 lg:p-6 hover:shadow-lg sm:hover:shadow-xl lg:hover:shadow-2xl transition-all duration-300 hover:scale-[1.01] sm:hover:scale-[1.02] lg:hover:scale-105">
+              <button
+                type="button"
+                onClick={() => handleStatCardClick('Administrators')}
+                className={`w-full text-left bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-lg sm:rounded-xl lg:rounded-2xl shadow-md sm:shadow-lg lg:shadow-xl border p-3 sm:p-4 lg:p-6 hover:shadow-lg sm:hover:shadow-xl lg:hover:shadow-2xl transition-all duration-300 hover:scale-[1.01] sm:hover:scale-[1.02] lg:hover:scale-105 ${
+                  filterRole === 'Administrators'
+                    ? 'border-blue-500 ring-2 ring-blue-500/40'
+                    : 'border-white/20 dark:border-gray-700/20'
+                }`}
+              >
                 <div className="flex items-center justify-between">
                   <div className="flex-1 min-w-0">
                     <p className="text-xs sm:text-sm font-medium text-blue-600 dark:text-blue-400 truncate">Administrators</p>
@@ -321,9 +631,17 @@ export default function UsersPage() {
                     </svg>
                   </div>
                 </div>
-              </div>
+              </button>
               
-              <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-lg sm:rounded-xl lg:rounded-2xl shadow-md sm:shadow-lg lg:shadow-xl border border-white/20 dark:border-gray-700/20 p-3 sm:p-4 lg:p-6 hover:shadow-lg sm:hover:shadow-xl lg:hover:shadow-2xl transition-all duration-300 hover:scale-[1.01] sm:hover:scale-[1.02] lg:hover:scale-105">
+              <button
+                type="button"
+                onClick={() => handleStatCardClick('Staff')}
+                className={`w-full text-left bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-lg sm:rounded-xl lg:rounded-2xl shadow-md sm:shadow-lg lg:shadow-xl border p-3 sm:p-4 lg:p-6 hover:shadow-lg sm:hover:shadow-xl lg:hover:shadow-2xl transition-all duration-300 hover:scale-[1.01] sm:hover:scale-[1.02] lg:hover:scale-105 ${
+                  filterRole === 'Staff'
+                    ? 'border-blue-500 ring-2 ring-blue-500/40'
+                    : 'border-white/20 dark:border-gray-700/20'
+                }`}
+              >
                 <div className="flex items-center justify-between">
                   <div className="flex-1 min-w-0">
                     <p className="text-xs sm:text-sm font-medium text-blue-600 dark:text-blue-400 truncate">Staff Members</p>
@@ -338,9 +656,17 @@ export default function UsersPage() {
                     </svg>
                   </div>
                 </div>
-              </div>
+              </button>
               
-              <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-lg sm:rounded-xl lg:rounded-2xl shadow-md sm:shadow-lg lg:shadow-xl border border-white/20 dark:border-gray-700/20 p-3 sm:p-4 lg:p-6 hover:shadow-lg sm:hover:shadow-xl lg:hover:shadow-2xl transition-all duration-300 hover:scale-[1.01] sm:hover:scale-[1.02] lg:hover:scale-105 sm:col-span-2 lg:col-span-1">
+              <button
+                type="button"
+                onClick={() => handleStatCardClick('AllUsers')}
+                className={`w-full text-left bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-lg sm:rounded-xl lg:rounded-2xl shadow-md sm:shadow-lg lg:shadow-xl border p-3 sm:p-4 lg:p-6 hover:shadow-lg sm:hover:shadow-xl lg:hover:shadow-2xl transition-all duration-300 hover:scale-[1.01] sm:hover:scale-[1.02] lg:hover:scale-105 sm:col-span-2 lg:col-span-1 ${
+                  filterRole === 'AllUsers'
+                    ? 'border-blue-500 ring-2 ring-blue-500/40'
+                    : 'border-white/20 dark:border-gray-700/20'
+                }`}
+              >
                 <div className="flex items-center justify-between">
                   <div className="flex-1 min-w-0">
                     <p className="text-xs sm:text-sm font-medium text-blue-600 dark:text-blue-400 truncate">Total Users</p>
@@ -355,7 +681,83 @@ export default function UsersPage() {
                     </svg>
                   </div>
                 </div>
-              </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleStatCardClick('Customer')}
+                className={`w-full text-left bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-lg sm:rounded-xl lg:rounded-2xl shadow-md sm:shadow-lg lg:shadow-xl border p-3 sm:p-4 lg:p-6 hover:shadow-lg sm:hover:shadow-xl lg:hover:shadow-2xl transition-all duration-300 hover:scale-[1.01] sm:hover:scale-[1.02] lg:hover:scale-105 ${
+                  filterRole === 'Customer'
+                    ? 'border-blue-500 ring-2 ring-blue-500/40'
+                    : 'border-white/20 dark:border-gray-700/20'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs sm:text-sm font-medium text-blue-600 dark:text-blue-400 truncate">Total Customers</p>
+                    <p className="text-xl sm:text-2xl lg:text-3xl font-bold text-blue-900 dark:text-blue-100 mt-1">
+                      {totalCustomers}
+                    </p>
+                    <p className="text-xs text-blue-600 dark:text-blue-400 mt-1 truncate">Customer user accounts</p>
+                  </div>
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 lg:w-12 lg:h-12 bg-blue-900 rounded-md sm:rounded-lg lg:rounded-xl flex items-center justify-center shadow-lg flex-shrink-0">
+                    <svg className="w-4 h-4 sm:w-5 sm:h-5 lg:w-6 lg:h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2a5 5 0 00-10 0v2m10 0H7m5-12a4 4 0 110-8 4 4 0 010 8z" />
+                    </svg>
+                  </div>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleStatCardClick('CustomerUnassigned')}
+                className={`w-full text-left bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-lg sm:rounded-xl lg:rounded-2xl shadow-md sm:shadow-lg lg:shadow-xl border p-3 sm:p-4 lg:p-6 hover:shadow-lg sm:hover:shadow-xl lg:hover:shadow-2xl transition-all duration-300 hover:scale-[1.01] sm:hover:scale-[1.02] lg:hover:scale-105 ${
+                  filterRole === 'CustomerUnassigned'
+                    ? 'border-blue-500 ring-2 ring-blue-500/40'
+                    : 'border-white/20 dark:border-gray-700/20'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs sm:text-sm font-medium text-blue-600 dark:text-blue-400 truncate">Customers Unassigned</p>
+                    <p className="text-xl sm:text-2xl lg:text-3xl font-bold text-blue-900 dark:text-blue-100 mt-1">
+                      {customersWithoutAssignedManagers}
+                    </p>
+                    <p className="text-xs text-blue-600 dark:text-blue-400 mt-1 truncate">Need manager assignment</p>
+                  </div>
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 lg:w-12 lg:h-12 bg-blue-900 rounded-md sm:rounded-lg lg:rounded-xl flex items-center justify-center shadow-lg flex-shrink-0">
+                    <svg className="w-4 h-4 sm:w-5 sm:h-5 lg:w-6 lg:h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M5.93 19h12.14a2 2 0 001.73-3l-6.07-10.5a2 2 0 00-3.46 0L4.2 16a2 2 0 001.73 3z" />
+                    </svg>
+                  </div>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleStatCardClick(REPORT_FILTER_UNIQUE_MAPPED)}
+                className={`w-full text-left bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-lg sm:rounded-xl lg:rounded-2xl shadow-md sm:shadow-lg lg:shadow-xl border p-3 sm:p-4 lg:p-6 hover:shadow-lg sm:hover:shadow-xl lg:hover:shadow-2xl transition-all duration-300 hover:scale-[1.01] sm:hover:scale-[1.02] lg:hover:scale-105 ${
+                  filterRole === REPORT_FILTER_UNIQUE_MAPPED
+                    ? 'border-blue-500 ring-2 ring-blue-500/40'
+                    : 'border-white/20 dark:border-gray-700/20'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs sm:text-sm font-medium text-blue-600 dark:text-blue-400 truncate">Matched Rows (Report)</p>
+                    <p className="text-xl sm:text-2xl lg:text-3xl font-bold text-blue-900 dark:text-blue-100 mt-1">
+                      {assignmentReportStats ? assignmentReportStats.matchedRows : "-"}
+                    </p>
+                    <p className="text-xs text-blue-600 dark:text-blue-400 mt-1 truncate">Rows mapped to customers</p>
+                  </div>
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 lg:w-12 lg:h-12 bg-blue-900 rounded-md sm:rounded-lg lg:rounded-xl flex items-center justify-center shadow-lg flex-shrink-0">
+                    <svg className="w-4 h-4 sm:w-5 sm:h-5 lg:w-6 lg:h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                  </div>
+                </div>
+              </button>
+
             </div>
           </div>
 
@@ -387,6 +789,8 @@ export default function UsersPage() {
                       <option value="">All Roles</option>
                       <option value="Company Admin">Company Admin</option>
                       <option value="Customer">Customer</option>
+                      <option value="CustomerAssigned">Customer (Assigned Manager)</option>
+                      <option value="CustomerUnassigned">Customer (Unassigned Manager)</option>
                       <option value="Manager">Manager</option>
                       <option value="Staff">Staff</option>
                     </select>
@@ -401,6 +805,55 @@ export default function UsersPage() {
             
           {/* Users List */}
           <div className="mb-4 sm:mb-6 lg:mb-8">
+            {bulkManageableUsers.length > 0 && (
+              <div className="mb-3 sm:mb-4 lg:mb-6 bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-lg sm:rounded-xl lg:rounded-2xl shadow-md sm:shadow-lg border border-white/20 dark:border-gray-700/20 p-3 sm:p-4">
+                <div className="flex flex-col gap-2 sm:gap-3">
+                  <div className="flex items-center justify-between">
+                    <label className="inline-flex items-center gap-2 text-xs sm:text-sm text-gray-700 dark:text-gray-300">
+                      <input
+                        type="checkbox"
+                        checked={allBulkSelected}
+                        onChange={toggleSelectAllBulk}
+                      />
+                      Select all customers in current view ({bulkManageableUsers.length})
+                    </label>
+                    <span className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">
+                      Selected: {selectedBulkCount}
+                    </span>
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <select
+                      value={bulkManagerProfileId}
+                      onChange={(e) => setBulkManagerProfileId(e.target.value)}
+                      className="w-full sm:w-72 rounded-md border border-gray-300 bg-white px-3 py-2 text-xs sm:text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                    >
+                      <option value="">Choose manager for selected customers</option>
+                      {managerOptions.map((manager) => (
+                        <option key={manager.managerProfileId} value={manager.managerProfileId}>
+                          {manager.label}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={handleBulkAssign}
+                      disabled={bulkAssigning || selectedBulkCount === 0 || !bulkManagerProfileId}
+                      className="rounded-md bg-blue-900 px-4 py-2 text-xs sm:text-sm font-medium text-white disabled:opacity-50"
+                    >
+                      {bulkAssigning ? "Updating..." : "Update Selected"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleApplyAllAssignments}
+                      disabled={bulkAssigning || selectedBulkCount === 0}
+                      className="rounded-md bg-emerald-700 px-4 py-2 text-xs sm:text-sm font-medium text-white disabled:opacity-50"
+                    >
+                      {bulkAssigning ? "Applying..." : "Apply All"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 lg:gap-4 mb-3 sm:mb-4 lg:mb-6">
               <h2 className="text-base sm:text-lg lg:text-xl font-bold text-blue-900 dark:text-white">System Users</h2>
               <div className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">
@@ -420,6 +873,34 @@ export default function UsersPage() {
                 {filteredUsers.length > 0 ? (
                   filteredUsers.map((user) => (
                     <div key={user._id} className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-lg sm:rounded-xl lg:rounded-2xl shadow-md sm:shadow-lg lg:shadow-xl border border-white/20 dark:border-gray-700/20 p-3 sm:p-4 lg:p-6 hover:shadow-lg sm:hover:shadow-xl lg:hover:shadow-2xl transition-all duration-300 hover:scale-[1.01] sm:hover:scale-[1.02] lg:hover:scale-105">
+                      {isManageableCustomer(user) && (
+                        <div className="mb-2 flex items-center justify-between gap-2">
+                          <label className="flex items-center gap-2 text-xs sm:text-sm text-gray-600 dark:text-gray-300">
+                            <input
+                              type="checkbox"
+                              checked={Boolean(selectedCustomerIds[user._id])}
+                              onChange={(e) =>
+                                setSelectedCustomerIds((prev) => ({
+                                  ...prev,
+                                  [user._id]: e.target.checked,
+                                }))
+                              }
+                            />
+                            Select for bulk update
+                          </label>
+                          {selectedCustomerIds[user._id] && (
+                            <span
+                              className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] sm:text-xs font-medium ${
+                                selectedManagerByUserId[user._id]
+                                  ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
+                                  : "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200"
+                              }`}
+                            >
+                              {selectedManagerByUserId[user._id] ? "Ready" : "Missing manager"}
+                            </span>
+                          )}
+                        </div>
+                      )}
                       <div className="flex items-start justify-between mb-2 sm:mb-3 lg:mb-4">
                         <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
                           <div className="w-8 h-8 sm:w-10 sm:h-10 lg:w-12 lg:h-12 bg-blue-900 rounded-md sm:rounded-lg lg:rounded-xl flex items-center justify-center shadow-lg flex-shrink-0">
@@ -486,6 +967,77 @@ export default function UsersPage() {
                             <span className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Company</span>
                             <span className="text-xs sm:text-sm text-gray-900 dark:text-white truncate max-w-20 sm:max-w-24 lg:max-w-none">
                               {user.customerProfile.companyName || 'N/A'}
+                            </span>
+                          </div>
+                        )}
+                        {user.isCustomer && (
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Assigned Manager</span>
+                            <span className={`inline-flex items-center rounded-full px-1.5 sm:px-2 py-0.5 sm:py-1 text-xs font-medium ${
+                              user.customerProfile?.assignedManager?.manager_id &&
+                              user.customerProfile?.assignedManager?.isActive !== false
+                                ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                                : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
+                            }`}>
+                              {user.customerProfile?.assignedManager?.manager_id &&
+                              user.customerProfile?.assignedManager?.isActive !== false
+                                ? 'Assigned'
+                                : 'Unassigned'}
+                            </span>
+                          </div>
+                        )}
+                        {user.isCustomer && managerOptions.length > 0 && (
+                          <div className="space-y-2 rounded-md border border-gray-200 dark:border-gray-700 p-2">
+                            <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">
+                              {user.customerProfile?.assignedManager?.manager_id ? "Change Manager" : "Assign Manager"}
+                            </p>
+                            <select
+                              value={
+                                selectedManagerByUserId[user._id] ||
+                                String(user.customerProfile?.assignedManager?.manager_id || "")
+                              }
+                              onChange={(e) =>
+                                setSelectedManagerByUserId((prev) => ({
+                                  ...prev,
+                                  [user._id]: e.target.value,
+                                }))
+                              }
+                              className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs sm:text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                            >
+                              <option value="">Select manager</option>
+                              {managerOptions.map((manager) => (
+                                <option key={manager.managerProfileId} value={manager.managerProfileId}>
+                                  {manager.label}
+                                </option>
+                              ))}
+                            </select>
+                            <button
+                              type="button"
+                              onClick={() => handleAssignManager(user)}
+                              disabled={
+                                assigningUserId === user._id ||
+                                !(
+                                  selectedManagerByUserId[user._id] ||
+                                  user.customerProfile?.assignedManager?.manager_id
+                                ) ||
+                                String(selectedManagerByUserId[user._id] || "") ===
+                                  String(user.customerProfile?.assignedManager?.manager_id || "")
+                              }
+                              className="w-full rounded-md bg-blue-900 px-3 py-1.5 text-xs sm:text-sm font-medium text-white disabled:opacity-50"
+                            >
+                              {assigningUserId === user._id
+                                ? "Updating..."
+                                : user.customerProfile?.assignedManager?.manager_id
+                                ? "Update Manager"
+                                : "Assign Manager"}
+                            </button>
+                          </div>
+                        )}
+                        {user.isCustomer && user.customerProfile?.assignedManager?.manager_id && (
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Manager Name</span>
+                            <span className="text-xs sm:text-sm text-gray-900 dark:text-white truncate max-w-24 sm:max-w-28 lg:max-w-none">
+                              {managerNameByProfileId.get(String(user.customerProfile.assignedManager.manager_id)) || "Manager record not found"}
                             </span>
                           </div>
                         )}

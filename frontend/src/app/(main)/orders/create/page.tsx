@@ -14,6 +14,12 @@ interface Customer {
   contactName: string;
   email: string;
   phone: string;
+  assignedManager?: {
+    manager_id?: string | { _id?: string };
+  };
+  assignedManagers?: Array<{
+    manager_id?: string | { _id?: string };
+  }>;
 }
 
 interface Product {
@@ -45,6 +51,8 @@ interface OrderItem {
   quantity: number;
   unitPrice: number;
   price: number;
+  deliveryCharges: number;
+  biltyCharges: number;
   tdsLink?: string;
   selectedCategory?: string; // Category filter for this item
 }
@@ -202,7 +210,7 @@ export default function CreateOrderPage() {
   const [formData, setFormData] = useState({
     customer: "",
     items: [] as OrderItem[],
-    notes: ""
+    notes: "",
   });
   const [customerStats, setCustomerStats] = useState<{
     totalOrders: number;
@@ -222,6 +230,14 @@ export default function CreateOrderPage() {
   const categoryFetchInFlightRef = useRef<Set<string>>(new Set());
   const formDataRef = useRef(formData);
   formDataRef.current = formData;
+  const calculateItemTotal = (item: Pick<OrderItem, "quantity" | "unitPrice" | "deliveryCharges" | "biltyCharges">) => {
+    const qty = Math.max(1, Number(item.quantity || 1));
+    const unit = Math.max(0, Number(item.unitPrice || 0));
+    const delivery = Math.max(0, Number(item.deliveryCharges || 0));
+    const bilty = Math.max(0, Number(item.biltyCharges || 0));
+    return qty * unit + delivery + bilty;
+  };
+
   const productSearchResolveTimersRef = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
 
   useEffect(() => {
@@ -260,6 +276,11 @@ export default function CreateOrderPage() {
       user?.userType === "customer" ||
       String(user?.role || "").toLowerCase() === "customer"
     );
+  const isManagerSession =
+    !isCustomerSession &&
+    !isCompanyAdminUser &&
+    !isSuperAdminUser &&
+    Boolean(user?.isManager);
   const canEditUnitPrice = !isCustomerSession;
 
   // Prefetch neighbor route to reduce transition latency.
@@ -267,9 +288,48 @@ export default function CreateOrderPage() {
     router.prefetch('/orders');
   }, [router]);
 
+  const visibleCustomersForCurrentUser = useMemo(() => {
+    if (!isManagerSession) return customers;
+
+    const managerIdCandidates = new Set<string>();
+    const addCandidate = (value: unknown) => {
+      const id = String(value || "").trim();
+      if (id) managerIdCandidates.add(id);
+    };
+
+    addCandidate((user as any)?._id);
+    addCandidate((user as any)?.id);
+    addCandidate((user as any)?.managerProfile?.manager_id);
+
+    if (managerIdCandidates.size === 0) return [];
+
+    return customers.filter((customer) => {
+      const assignedIds = new Set<string>();
+      const addAssignedId = (value: unknown) => {
+        const id = String(value || "").trim();
+        if (id) assignedIds.add(id);
+      };
+
+      addAssignedId((customer as any)?.assignedManager?.manager_id);
+      addAssignedId((customer as any)?.assignedManager?.manager_id?._id);
+
+      if (Array.isArray((customer as any)?.assignedManagers)) {
+        (customer as any).assignedManagers.forEach((entry: any) => {
+          addAssignedId(entry?.manager_id);
+          addAssignedId(entry?.manager_id?._id);
+        });
+      }
+
+      for (const managerId of managerIdCandidates) {
+        if (assignedIds.has(managerId)) return true;
+      }
+      return false;
+    });
+  }, [customers, isManagerSession, user]);
+
   const customerPickerMatches = useMemo(
-    () => filterCustomersForPicker(customers, customerSearchTerm),
-    [customers, customerSearchTerm]
+    () => filterCustomersForPicker(visibleCustomersForCurrentUser, customerSearchTerm),
+    [visibleCustomersForCurrentUser, customerSearchTerm]
   );
 
   // Get products for display - show ALL products to keep catalog complete and selectable.
@@ -1158,6 +1218,8 @@ export default function CreateOrderPage() {
           quantity: 1, 
           unitPrice: firstProduct?.price || 0,
           price: firstProduct?.price || 0,
+          deliveryCharges: 0,
+          biltyCharges: 0,
           tdsLink: "",
           selectedCategory: initialCategory
         }]
@@ -1226,7 +1288,12 @@ export default function CreateOrderPage() {
             ...item,
             product: value,
             unitPrice: value.price,
-            price: Number(value.price || 0) * Number(item.quantity || 1),
+            price: calculateItemTotal({
+              quantity: item.quantity,
+              unitPrice: Number(value.price || 0),
+              deliveryCharges: item.deliveryCharges,
+              biltyCharges: item.biltyCharges,
+            }),
             tdsLink: value.tdsLink || item.tdsLink || "",
             selectedCategory: nextSelectedCategory || item.selectedCategory || "",
           };
@@ -1242,11 +1309,53 @@ export default function CreateOrderPage() {
           if (field === 'quantity') {
             const nextQuantity = Math.max(1, Number(value || 1));
             const unitPrice = Number(item.unitPrice ?? item.product.price ?? 0);
-            return { ...item, quantity: nextQuantity, price: unitPrice * nextQuantity };
+            return {
+              ...item,
+              quantity: nextQuantity,
+              price: calculateItemTotal({
+                quantity: nextQuantity,
+                unitPrice,
+                deliveryCharges: item.deliveryCharges,
+                biltyCharges: item.biltyCharges,
+              }),
+            };
           } else if (field === 'unitPrice') {
             const nextUnitPrice = Math.max(0, Number(value || 0));
             const nextQuantity = Math.max(1, Number(item.quantity || 1));
-            return { ...item, unitPrice: nextUnitPrice, price: nextUnitPrice * nextQuantity };
+            return {
+              ...item,
+              unitPrice: nextUnitPrice,
+              price: calculateItemTotal({
+                quantity: nextQuantity,
+                unitPrice: nextUnitPrice,
+                deliveryCharges: item.deliveryCharges,
+                biltyCharges: item.biltyCharges,
+              }),
+            };
+          } else if (field === 'deliveryCharges') {
+            const nextDeliveryCharges = Math.max(0, Number(value || 0));
+            return {
+              ...item,
+              deliveryCharges: nextDeliveryCharges,
+              price: calculateItemTotal({
+                quantity: item.quantity,
+                unitPrice: item.unitPrice,
+                deliveryCharges: nextDeliveryCharges,
+                biltyCharges: item.biltyCharges,
+              }),
+            };
+          } else if (field === 'biltyCharges') {
+            const nextBiltyCharges = Math.max(0, Number(value || 0));
+            return {
+              ...item,
+              biltyCharges: nextBiltyCharges,
+              price: calculateItemTotal({
+                quantity: item.quantity,
+                unitPrice: item.unitPrice,
+                deliveryCharges: item.deliveryCharges,
+                biltyCharges: nextBiltyCharges,
+              }),
+            };
           } else if (field === 'tdsLink') {
             // When TDS link changes, save it to the product in database in real-time (debounced)
             if (item.product._id) {
@@ -1283,7 +1392,14 @@ export default function CreateOrderPage() {
                 selectedCategory: value,
                 product: firstProduct,
                 unitPrice: firstProduct.price,
-                price: firstProduct.price,
+                deliveryCharges: item.deliveryCharges || 0,
+                biltyCharges: item.biltyCharges || 0,
+                price: calculateItemTotal({
+                  quantity: 1,
+                  unitPrice: firstProduct.price,
+                  deliveryCharges: item.deliveryCharges || 0,
+                  biltyCharges: item.biltyCharges || 0,
+                }),
                 quantity: 1,
                 tdsLink: firstProduct.tdsLink || ""
               };
@@ -1390,6 +1506,8 @@ export default function CreateOrderPage() {
   const subtotal = formData.items.reduce((sum, item) => sum + item.price, 0);
   // Tax removed - no longer calculating or displaying tax
   const tax = 0;
+  const deliveryCharges = formData.items.reduce((sum, item) => sum + Number(item.deliveryCharges || 0), 0);
+  const biltyCharges = formData.items.reduce((sum, item) => sum + Number(item.biltyCharges || 0), 0);
   const total = subtotal;
 
   const fileToDataUrl = (file: File): Promise<string> =>
@@ -1479,12 +1597,21 @@ export default function CreateOrderPage() {
           product: item.product._id,
           quantity: item.quantity,
           unitPrice: Number(item.unitPrice ?? item.product.price ?? 0),
-          total: Number(item.unitPrice ?? item.product.price ?? 0) * Number(item.quantity || 1),
+          deliveryCharges: Number(item.deliveryCharges || 0),
+          biltyCharges: Number(item.biltyCharges || 0),
+          total: calculateItemTotal({
+            quantity: Number(item.quantity || 1),
+            unitPrice: Number(item.unitPrice ?? item.product.price ?? 0),
+            deliveryCharges: Number(item.deliveryCharges || 0),
+            biltyCharges: Number(item.biltyCharges || 0),
+          }),
           tdsLink: item.tdsLink || ""
         })),
         subtotal: subtotal,
-        tax: 0, // Backend will calculate tax
+        tax: 0,
         total: total,
+        deliveryCharges,
+        biltyCharges,
         notes: formData.notes,
         company_id: 'RESSICHEM'
       };
@@ -1979,7 +2106,7 @@ export default function CreateOrderPage() {
                 <div className="space-y-4">
                   {formData.items.map((item, index) => (
                     <div key={`item-${index}-${item.product?._id || 'new'}`} className="rounded-lg border border-stroke p-4 dark:border-dark-3">
-                      <div className="grid grid-cols-1 lg:grid-cols-7 gap-4">
+                      <div className="grid grid-cols-1 lg:grid-cols-9 gap-4">
                         {/* Category Filter Dropdown */}
                         <div>
                           <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
@@ -2140,6 +2267,36 @@ export default function CreateOrderPage() {
                           />
                         </div>
                         
+                        {/* Delivery Charges */}
+                        <div>
+                          <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                            Delivery Charges
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={Number(item.deliveryCharges || 0)}
+                            onChange={(e) => updateItem(index, 'deliveryCharges', Number(e.target.value))}
+                            className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 text-dark focus:border-primary focus:outline-none dark:border-dark-3 dark:bg-dark-2 dark:text-white transition-colors"
+                          />
+                        </div>
+
+                        {/* Bilty Charges */}
+                        <div>
+                          <label className="mb-2 block text-sm font-medium text-dark dark:text-white">
+                            Bilty Charges
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={Number(item.biltyCharges || 0)}
+                            onChange={(e) => updateItem(index, 'biltyCharges', Number(e.target.value))}
+                            className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 text-dark focus:border-primary focus:outline-none dark:border-dark-3 dark:bg-dark-2 dark:text-white transition-colors"
+                          />
+                        </div>
+
                         {/* Total Price & Remove Button */}
                         <div className="flex items-end gap-2">
                           <div className="flex-1">
@@ -2291,6 +2448,18 @@ export default function CreateOrderPage() {
                 <div className="rounded-lg border border-stroke bg-gray-50 p-6 dark:border-dark-3 dark:bg-dark-2">
                   <div className="space-y-3">
                     <div className="flex justify-between">
+                      <span className="text-dark dark:text-white">Subtotal (incl. item-wise charges):</span>
+                      <span className="font-medium text-dark dark:text-white">PKR {subtotal.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-dark dark:text-white">Delivery Charges:</span>
+                      <span className="font-medium text-dark dark:text-white">PKR {deliveryCharges.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-dark dark:text-white">Bilty Charges:</span>
+                      <span className="font-medium text-dark dark:text-white">PKR {biltyCharges.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between">
                       <span className="text-dark dark:text-white">Total:</span>
                       <span className="font-medium text-dark dark:text-white">PKR {total.toLocaleString()}</span>
                     </div>
@@ -2298,6 +2467,33 @@ export default function CreateOrderPage() {
                 </div>
               </div>
             )}
+
+            {/* Additional Charges (Item-Wise Totals) */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 mb-4">
+                <div className="w-8 h-8 rounded-full bg-teal-100 dark:bg-teal-900/20 flex items-center justify-center">
+                  <svg className="w-4 h-4 text-teal-600 dark:text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8V6m0 2v8m0 0v2m0-2h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <h4 className="text-lg font-medium text-dark dark:text-white">Additional Charges (Product-wise)</h4>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Total Delivery Charges</label>
+                  <div className="w-full rounded-lg border border-stroke bg-gray-50 px-4 py-3 text-dark dark:border-dark-3 dark:bg-dark-2 dark:text-white">
+                    PKR {deliveryCharges.toLocaleString()}
+                  </div>
+                </div>
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-dark dark:text-white">Total Bilty Charges</label>
+                  <div className="w-full rounded-lg border border-stroke bg-gray-50 px-4 py-3 text-dark dark:border-dark-3 dark:bg-dark-2 dark:text-white">
+                    PKR {biltyCharges.toLocaleString()}
+                  </div>
+                </div>
+              </div>
+            </div>
 
             {/* Customer Not Found Warning */}
             {user?.isCustomer && customerNotFound && !formData.customer && (
