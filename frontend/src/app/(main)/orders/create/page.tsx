@@ -741,7 +741,31 @@ export default function CreateOrderPage() {
         const customerData = await customerRes.json();
         console.log('👥 Customer data:', customerData);
         
-        const assignedManagers = customerData.assignedManagers || [];
+        const assignedManagersFromArray = Array.isArray(customerData.assignedManagers)
+          ? customerData.assignedManagers
+          : [];
+        const assignedManagersFromSingle =
+          customerData.assignedManager?.manager_id
+            ? [customerData.assignedManager]
+            : [];
+        const assignedManagersFromUserProfile =
+          (user as any)?.customerProfile?.assignedManager?.manager_id
+            ? [
+                {
+                  manager_id: (user as any).customerProfile.assignedManager.manager_id,
+                  assignedBy: (user as any).customerProfile.assignedManager.assignedBy,
+                  assignedAt: (user as any).customerProfile.assignedManager.assignedAt,
+                  isActive: (user as any).customerProfile.assignedManager.isActive !== false,
+                },
+              ]
+            : [];
+
+        const assignedManagers =
+          assignedManagersFromArray.length > 0
+            ? assignedManagersFromArray
+            : assignedManagersFromSingle.length > 0
+            ? assignedManagersFromSingle
+            : assignedManagersFromUserProfile;
         setCustomerAssignedManagers(assignedManagers);
         
         if (assignedManagers.length > 0) {

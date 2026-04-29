@@ -111,7 +111,21 @@ function permissionMiddleware(requiredPermissions = []) {
 
     console.log("🔑 User permission keys:", userPermissionKeys);
 
-    const hasPermission = requiredPermissions.every((p) => userPermissionKeys.includes(p));
+    // Support legacy/new permission-key variants (e.g. update_user vs users.update).
+    const permissionAliases = {
+      update_user: ["users.update", "user_update", "user_manage"],
+      create_user: ["users.create", "user_add", "user_manage"],
+      "users.read": ["user_view", "users.view"],
+      "users.update": ["update_user", "user_update", "user_manage"],
+      "users.create": ["create_user", "user_add", "user_manage"],
+    };
+
+    const hasPermission = requiredPermissions.every((required) => {
+      const aliases = permissionAliases[required] || [];
+      return [required, ...aliases].some((candidate) =>
+        userPermissionKeys.includes(candidate)
+      );
+    });
     if (!hasPermission) {
       return res.status(403).json({
         message: `Permission Denied: You do not have permission to ${requiredPermissions.join(", ")}. Please contact an administrator.`,

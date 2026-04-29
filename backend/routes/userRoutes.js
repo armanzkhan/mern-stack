@@ -4,6 +4,7 @@ const auth = require('../middleware/authMiddleware');
 const permissionMiddleware = require("../middleware/permissionMiddleware");
 const userController = require('../controllers/userController');
 const User = require('../models/User');
+const Customer = require('../models/Customer');
 const notificationService = require("../services/notificationService");
 const notificationTriggerService = require("../services/notificationTriggerService");
 const multer = require('multer');
@@ -146,6 +147,55 @@ router.get("/", auth, async (req, res) => {
       let fallbackQuery = User.find({ company_id: regex }).select(selectClause).sort({ _id: -1 }).lean();
       if (limit > 0) fallbackQuery = fallbackQuery.limit(limit);
       users = await fallbackQuery;
+    }
+
+    // Backfill manager assignment from Customer when legacy user profile is missing manager_id.
+    // This keeps `/users` UI accurate without requiring a manual repair for each affected user.
+    const customerUsersNeedingManagerSync = users.filter(
+      (user) =>
+        (user.isCustomer || user.customerProfile?.customer_id) &&
+        user.customerProfile?.customer_id &&
+        !user.customerProfile?.assignedManager?.manager_id
+    );
+
+    if (customerUsersNeedingManagerSync.length > 0) {
+      const customerIds = customerUsersNeedingManagerSync
+        .map((user) => String(user.customerProfile?.customer_id || ""))
+        .filter(Boolean);
+
+      const customers = await Customer.find({ _id: { $in: customerIds } })
+        .select("assignedManager assignedManagers")
+        .lean();
+      const customerById = new Map(customers.map((customer) => [String(customer._id), customer]));
+
+      users = users.map((user) => {
+        if (!(user.isCustomer || user.customerProfile?.customer_id)) return user;
+        const customerId = String(user.customerProfile?.customer_id || "");
+        if (!customerId) return user;
+        if (user.customerProfile?.assignedManager?.manager_id) return user;
+
+        const customer = customerById.get(customerId);
+        const activeAssignedManager = customer?.assignedManager?.manager_id
+          ? customer.assignedManager
+          : Array.isArray(customer?.assignedManagers)
+          ? customer.assignedManagers.find((managerRef) => managerRef?.manager_id && managerRef?.isActive !== false)
+          : null;
+
+        if (!activeAssignedManager?.manager_id) return user;
+
+        return {
+          ...user,
+          customerProfile: {
+            ...(user.customerProfile || {}),
+            assignedManager: {
+              manager_id: activeAssignedManager.manager_id,
+              assignedBy: activeAssignedManager.assignedBy || null,
+              assignedAt: activeAssignedManager.assignedAt || null,
+              isActive: activeAssignedManager.isActive !== false,
+            },
+          },
+        };
+      });
     }
 
     res.json(users);
