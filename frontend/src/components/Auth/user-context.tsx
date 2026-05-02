@@ -1,5 +1,13 @@
 "use client";
-import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  ReactNode,
+} from "react";
 import { jwtDecode } from "jwt-decode";
 import axios from "axios";
 import { getBackendUrl } from "@/lib/getBackendUrl";
@@ -57,6 +65,21 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const [isInitialized, setIsInitialized] = useState(false);
   const [hasToken, setHasToken] = useState<boolean | null>(null);
   const [isClient, setIsClient] = useState(false);
+  const refreshUserRef = useRef<(retried?: boolean) => Promise<void>>(async () => {});
+
+  const clearSessionAndRedirect = useCallback(() => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("refreshToken");
+    localStorage.removeItem("userType");
+    localStorage.removeItem("userRole");
+    setUser(null);
+    setHasToken(false);
+    setLoading(false);
+    setIsInitialized(true);
+    if (typeof window !== "undefined") {
+      window.location.href = "/auth/sign-in";
+    }
+  }, []);
 
   const refreshUser = async (retriedAfterRefresh = false) => {
     if (!isClient) return;
@@ -156,15 +179,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
             }
           }
         }
-        localStorage.removeItem("token");
-        localStorage.removeItem("refreshToken");
-        localStorage.removeItem("userType");
-        localStorage.removeItem("userRole");
-        setUser(null);
-        setHasToken(false);
-        if (typeof window !== "undefined") {
-          window.location.href = "/auth/sign-in";
-        }
+        clearSessionAndRedirect();
       } else {
         localStorage.removeItem("token");
         setUser(null);
@@ -174,6 +189,56 @@ export function UserProvider({ children }: { children: ReactNode }) {
       setIsInitialized(true);
     }
   };
+
+  refreshUserRef.current = refreshUser;
+
+  /** Renew access token before it expires so idle tabs stay signed in (no API call needed). */
+  useEffect(() => {
+    if (!isClient) return;
+    const TICK_MS = 45_000;
+    const BUFFER_SEC = 120;
+
+    const tick = async () => {
+      const token = localStorage.getItem("token");
+      if (!token) return;
+      let decoded: { exp?: number };
+      try {
+        decoded = jwtDecode(token) as { exp?: number };
+      } catch {
+        return;
+      }
+      const exp = decoded.exp;
+      if (!exp) return;
+      const now = Date.now() / 1000;
+      if (exp > now + BUFFER_SEC) return;
+
+      const rt = localStorage.getItem("refreshToken");
+      if (!rt) {
+        clearSessionAndRedirect();
+        return;
+      }
+      try {
+        const apiUrl = getBackendUrl();
+        const refreshRes = await axios.post<{ success: boolean; token: string }>(
+          `${apiUrl}/api/auth/refresh`,
+          { refreshToken: rt },
+          { headers: { "Content-Type": "application/json" }, timeout: 10000 }
+        );
+        if (refreshRes.data?.success && refreshRes.data?.token) {
+          localStorage.setItem("token", refreshRes.data.token);
+          await refreshUserRef.current(true);
+        } else {
+          clearSessionAndRedirect();
+        }
+      } catch {
+        clearSessionAndRedirect();
+      }
+    };
+
+    const id = window.setInterval(() => void tick(), TICK_MS);
+    void tick();
+    return () => clearInterval(id);
+  }, [isClient, clearSessionAndRedirect]);
 
   useEffect(() => {
     setIsClient(true);
@@ -203,35 +268,17 @@ export function UserProvider({ children }: { children: ReactNode }) {
                 );
                 if (r.data?.success && r.data?.token) {
                   localStorage.setItem("token", r.data.token);
-                  await refreshUser(true);
+                  await refreshUserRef.current(true);
                   return;
                 }
               } catch {
                 // fall through to clear and redirect
               }
-              localStorage.removeItem("token");
-              localStorage.removeItem("refreshToken");
-              localStorage.removeItem("userType");
-              localStorage.removeItem("userRole");
-              setUser(null);
-              setLoading(false);
-              setIsInitialized(true);
-              setHasToken(false);
-              window.location.href = "/auth/sign-in";
+              clearSessionAndRedirect();
             })();
             return;
           }
-          localStorage.removeItem("token");
-          localStorage.removeItem("refreshToken");
-          localStorage.removeItem("userType");
-          localStorage.removeItem("userRole");
-          setUser(null);
-          setLoading(false);
-          setIsInitialized(true);
-          setHasToken(false);
-          if (typeof window !== "undefined") {
-            window.location.href = "/auth/sign-in";
-          }
+          clearSessionAndRedirect();
           return;
         }
         // Set basic user info from token immediately for faster redirects
@@ -249,20 +296,9 @@ export function UserProvider({ children }: { children: ReactNode }) {
         setIsInitialized(true);
         setLoading(false);
         // Fetch full user details in background
-        refreshUser();
+        void refreshUserRef.current(false);
       } catch {
-        localStorage.removeItem("token");
-        localStorage.removeItem("refreshToken");
-        localStorage.removeItem("userType");
-        localStorage.removeItem("userRole");
-        setUser(null);
-        setLoading(false);
-        setIsInitialized(true);
-        setHasToken(false);
-        // Redirect to /auth/sign-in on token decode error
-        if (typeof window !== "undefined") {
-          window.location.href = "/auth/sign-in";
-        }
+        clearSessionAndRedirect();
       }
     } else {
       setLoading(false);
@@ -280,11 +316,14 @@ export function UserProvider({ children }: { children: ReactNode }) {
     }, 10000); // 10 second timeout
     
     return () => clearTimeout(timeout);
-  }, [isClient, isInitialized]);
+  }, [isClient, isInitialized, clearSessionAndRedirect]);
 
   const logout = () => {
     if (isClient) {
       localStorage.removeItem("token");
+      localStorage.removeItem("refreshToken");
+      localStorage.removeItem("userType");
+      localStorage.removeItem("userRole");
     }
     setUser(null);
   };

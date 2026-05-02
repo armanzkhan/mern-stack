@@ -5,6 +5,9 @@ const { generateToken, verifyRefreshToken } = require("../services/authService")
 const notificationService = require("../services/notificationService");
 const Notification = require("../models/Notification");
 
+/** Short-lived access JWT (e.g. 15m, 1h). Refresh token stays long (7d). */
+const ACCESS_TOKEN_EXPIRES_IN = process.env.JWT_ACCESS_EXPIRES_IN || "1h";
+
 // ================= REGISTER =================
 async function register(req, res) {
   try {
@@ -181,7 +184,7 @@ async function login(req, res) {
 
     let token, refreshToken;
     try {
-      token = await generateToken(user, "15m");
+      token = await generateToken(user, ACCESS_TOKEN_EXPIRES_IN);
       refreshToken = await generateToken(user, "7d", true);
       console.log("✅ Tokens generated successfully");
     } catch (tokenError) {
@@ -286,7 +289,7 @@ async function refresh(req, res) {
                         user.email === "superadmin@ressichem.com" ||
                         user.roles.some(r => r.name === "Super Admin");
 
-    const newToken = await generateToken(user, "15m");
+    const newToken = await generateToken(user, ACCESS_TOKEN_EXPIRES_IN);
     return res.json({ success: true, token: newToken });
   } catch (err) {
     console.error("Refresh error:", err);

@@ -28,7 +28,10 @@ function authMiddleware(req, res, next) {
       console.log("✅ JWT decoded payload:", decoded);
     } catch (err) {
       console.error("⛔ JWT verify error:", err.message);
-      return res.status(403).json({ message: "Invalid or expired token" });
+      const isExpired = err && err.name === "TokenExpiredError";
+      return res
+        .status(isExpired ? 401 : 403)
+        .json({ message: isExpired ? "Token expired" : "Invalid or expired token" });
     }
 
     // If there's an encrypted perms payload, decrypt it and merge
