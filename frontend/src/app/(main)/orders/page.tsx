@@ -833,7 +833,7 @@ function OrdersPageContent() {
       } else {
         const numericValue = Number(rawValue);
         if (field === "quantity") {
-          item.quantity = Number.isFinite(numericValue) ? Math.max(1, Math.round(numericValue)) : 1;
+          item.quantity = Number.isFinite(numericValue) ? Math.max(1, numericValue) : 1;
         } else if (field === "unitPrice") {
           item.unitPrice = Number.isFinite(numericValue) ? Math.max(0, numericValue) : 0;
         } else if (field === "deliveryCharges") {
@@ -2919,7 +2919,7 @@ function OrdersPageContent() {
                                 <input
                                   type="number"
                                   min={1}
-                                  step={1}
+                                  step={0.01}
                                   value={Number(item.quantity || 1)}
                                   onChange={(e) => updateEditingItem(index, "quantity", e.target.value)}
                                   disabled={!canCurrentUserEditOrderItem(item)}
