@@ -1101,57 +1101,35 @@ function OrdersPageContent() {
       }
 
       if (isLogisticManager && newStatus === "dispatch") {
-        if (newStatus === "dispatch") {
-          const targetOrder = orders.find((order) => order._id === orderId);
-          const latestPartialRemark = [...(targetOrder?.logisticsRemarks || [])]
-            .reverse()
-            .find(
-              (entry) =>
-                String(entry.status || "").toLowerCase() === "partial_shipment" &&
-                Array.isArray(entry.partialShipmentItems) &&
-                entry.partialShipmentItems.length > 0
-            );
-          const remainingItems = (latestPartialRemark?.partialShipmentItems || [])
-            .map((item) => {
-              const remaining = Number(item.remainingQuantity || 0);
-              return {
-                productId: String(item.productId || ""),
-                productName: String(item.productName || "Item"),
-                orderedQuantity: remaining,
-                shippedQuantity: remaining,
-                remainingQuantity: 0,
-              };
-            })
-            .filter((item) => item.orderedQuantity > 0);
-
-          if (remainingItems.length > 0) {
-            setDispatchOrderId(orderId);
-            setDispatchDraftItems(remainingItems);
-            setDispatchNote("");
-            setShowDispatchModal(true);
-            return;
-          }
-        } else {
-          const reason = window.prompt("Enter dispatch remark/details:");
-          if (reason === null) return;
-          const trimmedReason = reason.trim();
-          if (!trimmedReason) {
-            setMessage("❌ Dispatch remark is required");
-            setTimeout(() => setMessage(""), 3000);
-            return;
-          }
-          comments = trimmedReason;
-        }
-
-        if (!comments) {
-          setMessage(
-            newStatus === "dispatch"
-              ? "❌ Dispatch remark is required"
-              : "❌ Partial shipment details are required"
+        const targetOrder = orders.find((order) => order._id === orderId);
+        const latestPartialRemark = [...(targetOrder?.logisticsRemarks || [])]
+          .reverse()
+          .find(
+            (entry) =>
+              String(entry.status || "").toLowerCase() === "partial_shipment" &&
+              Array.isArray(entry.partialShipmentItems) &&
+              entry.partialShipmentItems.length > 0
           );
-          setTimeout(() => setMessage(""), 3000);
-          return;
-        }
+        const remainingItems = (latestPartialRemark?.partialShipmentItems || [])
+          .map((item) => {
+            const remaining = Number(item.remainingQuantity || 0);
+            return {
+              productId: String(item.productId || ""),
+              productName: String(item.productName || "Item"),
+              orderedQuantity: remaining,
+              shippedQuantity: remaining,
+              remainingQuantity: 0,
+            };
+          })
+          .filter((item) => item.orderedQuantity > 0);
+
+        // Always use the dispatch modal: after a partial shipment it shows remaining lines;
+        // for a full dispatch (no remainder) submitDispatchUpdate still sends a default remark.
+        setDispatchOrderId(orderId);
+        setDispatchDraftItems(remainingItems.length > 0 ? remainingItems : []);
+        setDispatchNote("");
+        setShowDispatchModal(true);
+        return;
       }
 
       const response = await fetch(`/api/orders/${orderId}/status`, {
@@ -2347,9 +2325,13 @@ function OrdersPageContent() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
           <div className="w-full max-w-3xl rounded-lg bg-white shadow-xl dark:bg-gray-800">
             <div className="border-b border-gray-200 px-6 py-4 dark:border-gray-700">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Dispatch Remaining Items</h3>
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                {dispatchDraftItems.length > 0 ? "Dispatch remaining items" : "Confirm dispatch"}
+              </h3>
               <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
-                Remaining quantities from the latest partial shipment are listed below.
+                {dispatchDraftItems.length > 0
+                  ? "Remaining quantities from the latest partial shipment are listed below."
+                  : "Confirm full dispatch for this order. Add an optional note if needed."}
               </p>
             </div>
             <div className="max-h-[60vh] overflow-y-auto p-6">
