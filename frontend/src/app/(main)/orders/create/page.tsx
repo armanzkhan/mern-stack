@@ -231,7 +231,7 @@ export default function CreateOrderPage() {
   const formDataRef = useRef(formData);
   formDataRef.current = formData;
   const calculateItemTotal = (item: Pick<OrderItem, "quantity" | "unitPrice" | "deliveryCharges" | "biltyCharges">) => {
-    const qty = Math.max(1, Number(item.quantity || 1));
+    const qty = Math.max(0.1, Number(item.quantity || 0.1));
     const unit = Math.max(0, Number(item.unitPrice || 0));
     const delivery = Math.max(0, Number(item.deliveryCharges || 0));
     const bilty = Math.max(0, Number(item.biltyCharges || 0));
@@ -1331,7 +1331,7 @@ export default function CreateOrderPage() {
       items: prev.items.map((item, i) => {
         if (i === index) {
           if (field === 'quantity') {
-            const nextQuantity = Math.max(1, Number(value || 1));
+            const nextQuantity = Math.max(0.1, Number(value || 0.1));
             const unitPrice = Number(item.unitPrice ?? item.product.price ?? 0);
             return {
               ...item,
@@ -1345,7 +1345,7 @@ export default function CreateOrderPage() {
             };
           } else if (field === 'unitPrice') {
             const nextUnitPrice = Math.max(0, Number(value || 0));
-            const nextQuantity = Math.max(1, Number(item.quantity || 1));
+            const nextQuantity = Math.max(0.1, Number(item.quantity || 0.1));
             return {
               ...item,
               unitPrice: nextUnitPrice,
@@ -1624,7 +1624,7 @@ export default function CreateOrderPage() {
           deliveryCharges: Number(item.deliveryCharges || 0),
           biltyCharges: Number(item.biltyCharges || 0),
           total: calculateItemTotal({
-            quantity: Number(item.quantity || 1),
+            quantity: Number(item.quantity || 0.1),
             unitPrice: Number(item.unitPrice ?? item.product.price ?? 0),
             deliveryCharges: Number(item.deliveryCharges || 0),
             biltyCharges: Number(item.biltyCharges || 0),
@@ -2284,10 +2284,10 @@ export default function CreateOrderPage() {
                           </label>
                           <input
                             type="number"
-                            min="1"
+                            min="0.1"
                             step="0.01"
                             value={item.quantity}
-                            onChange={(e) => updateItem(index, 'quantity', Number(e.target.value) || 1)}
+                            onChange={(e) => updateItem(index, 'quantity', Number(e.target.value) || 0.1)}
                             className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 text-dark focus:border-primary focus:outline-none dark:border-dark-3 dark:bg-dark-2 dark:text-white transition-colors"
                           />
                         </div>

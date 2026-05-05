@@ -105,7 +105,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
           // Map items: finalAmount -> total
           const mappedItems = (invoiceData.items || []).map((item: any) => ({
             ...item,
-            total: item.finalAmount || item.total || (item.unitPrice || 0) * (item.quantity || 1)
+            total: item.finalAmount || item.total || (item.unitPrice || 0) * (item.quantity || 0.1)
           }));
           
           // Map totalDiscount to discount, taxAmount to tax

@@ -94,7 +94,7 @@ interface OrderItem {
 }
 
 const calculateOrderItemTotal = (item: Partial<OrderItem>) => {
-  const quantity = Math.max(1, Number(item?.quantity || 1));
+  const quantity = Math.max(0.1, Number(item?.quantity || 0.1));
   const unitPrice = Math.max(0, Number(item?.unitPrice || 0));
   const deliveryCharges = Math.max(0, Number(item?.deliveryCharges || 0));
   const biltyCharges = Math.max(0, Number(item?.biltyCharges || 0));
@@ -727,7 +727,7 @@ function OrdersPageContent() {
             ? item.product.category
             : String(item.product?.category?.mainCategory || ""),
         productSearch: String(item.product?.name || ""),
-        quantity: Number(item.quantity || 1),
+        quantity: Number(item.quantity || 0.1),
         unitPrice: Number(item.unitPrice || item.product?.price || 0),
         deliveryCharges: Number(item.deliveryCharges || 0),
         biltyCharges: Number(item.biltyCharges || 0),
@@ -806,7 +806,7 @@ function OrdersPageContent() {
       const item = { ...existingItems[itemIndex] };
       if (field === "product") {
         const selectedProduct = rawValue as OrderItem["product"];
-        const quantity = Math.max(1, Number(item.quantity || 1));
+        const quantity = Math.max(0.1, Number(item.quantity || 0.1));
         item.product = selectedProduct;
         item.selectedCategory = getProductCategoryLabel(selectedProduct);
         item.productSearch = String(selectedProduct?.name || "");
@@ -833,7 +833,7 @@ function OrdersPageContent() {
       } else {
         const numericValue = Number(rawValue);
         if (field === "quantity") {
-          item.quantity = Number.isFinite(numericValue) ? Math.max(1, numericValue) : 1;
+          item.quantity = Number.isFinite(numericValue) ? Math.max(0.1, numericValue) : 0.1;
         } else if (field === "unitPrice") {
           item.unitPrice = Number.isFinite(numericValue) ? Math.max(0, numericValue) : 0;
         } else if (field === "deliveryCharges") {
@@ -966,7 +966,7 @@ function OrdersPageContent() {
             typeof item.product === "string"
               ? item.product
               : (item.product as { _id?: string })?._id;
-          const quantity = Math.max(1, Number(item.quantity || 1));
+          const quantity = Math.max(0.1, Number(item.quantity || 0.1));
           const unitPrice = Math.max(0, Number(item.unitPrice || 0));
           const deliveryCharges = Math.max(0, Number(item.deliveryCharges || 0));
           const biltyCharges = Math.max(0, Number(item.biltyCharges || 0));
@@ -2900,9 +2900,9 @@ function OrdersPageContent() {
                                 <label className="mb-1 block text-xs font-medium text-blue-900 dark:text-white">Quantity</label>
                                 <input
                                   type="number"
-                                  min={1}
+                                  min={0.1}
                                   step={0.01}
-                                  value={Number(item.quantity || 1)}
+                                  value={Number(item.quantity || 0.1)}
                                   onChange={(e) => updateEditingItem(index, "quantity", e.target.value)}
                                   disabled={!canCurrentUserEditOrderItem(item)}
                                   className="w-full rounded-lg border border-gray-300 bg-white px-2 py-2 text-gray-900 focus:border-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-900/50 dark:border-gray-600 dark:bg-gray-700 dark:text-white"

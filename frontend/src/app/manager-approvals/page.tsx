@@ -2079,9 +2079,15 @@ export default function ManagerApprovalsPage() {
                 <input
                   type="number"
                   value={editData.quantity}
-                  onChange={(e) => setEditData(prev => ({ ...prev, quantity: Number(e.target.value) }))}
+                  onChange={(e) =>
+                    setEditData((prev) => ({
+                      ...prev,
+                      quantity: Math.max(0.1, Number(e.target.value) || 0.1),
+                    }))
+                  }
                   className="w-full p-2 border border-stroke rounded-md dark:border-strokedark dark:bg-boxdark dark:text-white"
-                  min="1"
+                  min="0.1"
+                  step="0.01"
                 />
               </div>
 

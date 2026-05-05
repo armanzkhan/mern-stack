@@ -396,10 +396,10 @@ export default function EditOrderPage() {
                           </label>
                           <input
                             type="number"
-                            min="1"
+                            min="0.1"
                             step="0.01"
                             value={item.quantity}
-                            onChange={(e) => updateItem(index, 'quantity', Number(e.target.value) || 1)}
+                            onChange={(e) => updateItem(index, 'quantity', Number(e.target.value) || 0.1)}
                             className="w-full rounded-lg border border-stroke bg-transparent px-4 py-3 text-dark focus:border-primary focus:outline-none dark:border-dark-3 dark:bg-dark-2 dark:text-white transition-colors"
                           />
                         </div>

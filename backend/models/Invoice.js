@@ -9,7 +9,7 @@ const invoiceItemSchema = new mongoose.Schema(
     },
     productName: { type: String, required: true },
     category: { type: String, required: true },
-    quantity: { type: Number, required: true, min: 1 },
+    quantity: { type: Number, required: true, min: 0.1 },
     unitPrice: { type: Number, required: true, min: 0 },
     originalAmount: { type: Number, required: true, min: 0 },
     discountPercentage: { type: Number, default: 0, min: 0, max: 100 },
