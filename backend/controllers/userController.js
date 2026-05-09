@@ -1,8 +1,117 @@
 const User = require("../models/User");
 const Customer = require("../models/Customer");
+const Manager = require("../models/Manager");
+const Order = require("../models/Order");
+const OrderItemApproval = require("../models/OrderItemApproval");
 const CategoryAssignment = require("../models/CategoryAssignment");
 const notificationService = require("../services/notificationService");
 const notificationTriggerService = require("../services/notificationTriggerService");
+
+/**
+ * `/users` assigns manager on User.customerProfile only. Customer portal and order routing
+ * (`getCustomerProfile`, `itemApprovalService.getManagersForCategory`, manager order lists)
+ * read `Customer.assignedManager` and `OrderItemApproval.assignedManager`. Sync them here.
+ */
+async function syncCustomerAssignedManagerFromUserUpdate(userDoc, reqBody, actingUser) {
+  if (!userDoc?.isCustomer || !userDoc.customerProfile?.customer_id) return;
+
+  const touchedViaDotKey = Object.prototype.hasOwnProperty.call(
+    reqBody,
+    "customerProfile.assignedManager.manager_id"
+  );
+  const nested = reqBody?.customerProfile?.assignedManager;
+  const touchedInactive = Object.prototype.hasOwnProperty.call(
+    reqBody,
+    "customerProfile.assignedManager.isActive"
+  );
+  const touchedAssignedAt = Object.prototype.hasOwnProperty.call(
+    reqBody,
+    "customerProfile.assignedManager.assignedAt"
+  );
+
+  const assignmentTouched =
+    touchedViaDotKey ||
+    nested !== undefined ||
+    touchedInactive ||
+    touchedAssignedAt;
+
+  if (!assignmentTouched) return;
+
+  const companyId = userDoc.company_id;
+  const customerId = userDoc.customerProfile.customer_id;
+
+  const managerProfileIdRaw =
+    reqBody["customerProfile.assignedManager.manager_id"] ??
+    nested?.manager_id ??
+    userDoc?.customerProfile?.assignedManager?.manager_id;
+
+  if (!managerProfileIdRaw) return;
+
+  const managerRecord = await Manager.findOne({
+    _id: managerProfileIdRaw,
+    company_id: companyId,
+    isActive: true,
+  });
+  if (!managerRecord) {
+    console.warn("syncCustomerAssignedManagerFromUserUpdate: Manager not found", managerProfileIdRaw);
+    return;
+  }
+
+  const assignedAtRaw =
+    reqBody["customerProfile.assignedManager.assignedAt"] ?? nested?.assignedAt;
+  const isActiveRaw =
+    reqBody["customerProfile.assignedManager.isActive"] ?? nested?.isActive ?? true;
+
+  const assignedPayload = {
+    manager_id: managerRecord._id,
+    assignedBy: actingUser?._id || null,
+    assignedAt: assignedAtRaw ? new Date(assignedAtRaw) : new Date(),
+    isActive: isActiveRaw !== false,
+  };
+
+  await Customer.findOneAndUpdate(
+    { _id: customerId, company_id: companyId },
+    {
+      $set: {
+        assignedManager: assignedPayload,
+        assignedManagers: [assignedPayload],
+      },
+    }
+  );
+
+  const newManagerUser = await User.findOne({
+    user_id: managerRecord.user_id,
+    company_id: companyId,
+    isActive: true,
+  })
+    .select("_id")
+    .lean();
+
+  if (!newManagerUser?._id) {
+    console.warn(
+      "syncCustomerAssignedManagerFromUserUpdate: No User for manager user_id",
+      managerRecord.user_id
+    );
+    return;
+  }
+
+  const orderIds = await Order.distinct("_id", {
+    customer: customerId,
+    company_id: companyId,
+  });
+
+  if (!orderIds?.length) return;
+
+  await OrderItemApproval.updateMany(
+    {
+      orderId: { $in: orderIds },
+      company_id: companyId,
+      status: "pending",
+      assignedManager: { $ne: null },
+    },
+    { $set: { assignedManager: newManagerUser._id } }
+  );
+}
 
 // Get all users
 exports.getUsers = async (req, res) => {
@@ -743,7 +852,13 @@ exports.updateUser = async (req, res) => {
       req.body,
       { new: true, runValidators: true }
     );
-    
+
+    try {
+      await syncCustomerAssignedManagerFromUserUpdate(user, req.body, req.user);
+    } catch (syncErr) {
+      console.error("Error syncing Customer / approvals after manager assignment:", syncErr);
+    }
+
     res.json(user);
   } catch (error) {
     console.error("Error updating user:", error);
