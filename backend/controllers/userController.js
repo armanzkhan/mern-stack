@@ -13,7 +13,7 @@ const notificationTriggerService = require("../services/notificationTriggerServi
  * read `Customer.assignedManager` and `OrderItemApproval.assignedManager`. Sync them here.
  */
 async function syncCustomerAssignedManagerFromUserUpdate(userDoc, reqBody, actingUser) {
-  if (!userDoc?.isCustomer || !userDoc.customerProfile?.customer_id) return;
+  if (!userDoc?.isCustomer) return;
 
   const touchedViaDotKey = Object.prototype.hasOwnProperty.call(
     reqBody,
@@ -38,7 +38,36 @@ async function syncCustomerAssignedManagerFromUserUpdate(userDoc, reqBody, actin
   if (!assignmentTouched) return;
 
   const companyId = userDoc.company_id;
-  const customerId = userDoc.customerProfile.customer_id;
+  let customerId = userDoc.customerProfile?.customer_id;
+
+  /** Many legacy logins lack `customerProfile.customer_id`; resolve Customer by email so sync runs. */
+  if (!customerId && typeof userDoc.email === "string" && userDoc.email.trim()) {
+    const trimmed = userDoc.email.trim();
+    const escaped = trimmed.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const cust = await Customer.findOne({
+      company_id: companyId,
+      email: new RegExp(`^${escaped}$`, "i"),
+    })
+      .select("_id")
+      .lean();
+    if (cust?._id) {
+      customerId = cust._id;
+      await User.findByIdAndUpdate(userDoc._id, {
+        $set: { "customerProfile.customer_id": cust._id },
+      });
+      console.log(
+        `syncCustomerAssignedManagerFromUserUpdate: Linked User ${trimmed} to Customer ${cust._id}`
+      );
+    }
+  }
+
+  if (!customerId) {
+    console.warn(
+      "syncCustomerAssignedManagerFromUserUpdate: No customerProfile.customer_id and no Customer row for email",
+      userDoc.email
+    );
+    return;
+  }
 
   const managerProfileIdRaw =
     reqBody["customerProfile.assignedManager.manager_id"] ??

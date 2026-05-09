@@ -279,9 +279,10 @@ exports.getManagerProfile = async (req, res) => {
       // Query ALL active customers whose assignment references this Manager document(s).
       // Previously this used .limit(100) on the full customer list then filtered in memory,
       // so only ~100 customers were ever scanned and counts were wrong (e.g. 21 instead of hundreds).
+      // List all customers assigned to this manager (any status). Previously only `active`
+      // hid customers that were inactive/suspended but still assigned — managers could not see them.
       assignedCustomers = await Customer.find({
         company_id: companyId,
-        status: 'active',
         $or: [
           { 'assignedManager.manager_id': { $in: managerIds } },
           { 'assignedManagers.manager_id': { $in: managerIds } },
